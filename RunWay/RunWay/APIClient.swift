@@ -76,6 +76,37 @@ final class APIClient {
         return try await send(request, decode: Response.self)
     }
 
+    func post<Response: Decodable>(
+        path: String,
+        token: String? = nil
+    ) async throws -> Response {
+        let request = try makeRequest(
+            path: path,
+            method: "POST",
+            queryItems: [],
+            token: token,
+            body: nil
+        )
+
+        return try await send(request, decode: Response.self)
+    }
+
+    func delete<Response: Decodable>(
+        path: String,
+        queryItems: [URLQueryItem] = [],
+        token: String? = nil
+    ) async throws -> Response {
+        let request = try makeRequest(
+            path: path,
+            method: "DELETE",
+            queryItems: queryItems,
+            token: token,
+            body: nil
+        )
+
+        return try await send(request, decode: Response.self)
+    }
+
     private func makeRequest(
         path: String,
         method: String,
@@ -191,6 +222,8 @@ final class APIClient {
         print("Response payload:", responseText)
     }
 }
+
+struct EmptyAPIResponse: Decodable {}
 
 private struct APIErrorResponse: Decodable {
     let detail: String

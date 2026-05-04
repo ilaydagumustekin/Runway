@@ -6,6 +6,8 @@ import Charts
 struct HomeView: View {
     @Binding var selectedTab: Tab
     @Binding var showSettings: Bool
+    @EnvironmentObject private var authSession: AuthSession
+    @EnvironmentObject private var favoritesViewModel: FavoritesViewModel
     @StateObject private var viewModel = HomeViewModel()
     @StateObject private var neighborhoodDetailViewModel = NeighborhoodDetailViewModel()
 
@@ -144,6 +146,7 @@ struct HomeView: View {
                 hasLoadedInitialData = true
                 await viewModel.loadDashboard()
                 await neighborhoodDetailViewModel.loadDetails()
+                await loadFavoritesIfPossible()
             }
         }
     }
@@ -384,7 +387,21 @@ struct HomeView: View {
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 6) {
+            VStack(alignment: .trailing, spacing: 8) {
+                Button {
+                    Task {
+                        await toggleFavorite()
+                    }
+                } label: {
+                    Image(systemName: favoritesViewModel.isFavoriteCurrentNeighborhood ? "heart.fill" : "heart")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(favoritesViewModel.isFavoriteCurrentNeighborhood ? Color.red : .secondary)
+                        .frame(width: 36, height: 36)
+                        .background(Color(.systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
                 Text("MYKI")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(.secondary)
@@ -621,7 +638,7 @@ struct HomeView: View {
     }
 
     private var activeErrorMessage: String? {
-        neighborhoodDetailViewModel.errorMessage ?? viewModel.errorMessage
+        favoritesViewModel.errorMessage ?? neighborhoodDetailViewModel.errorMessage ?? viewModel.errorMessage
     }
 
     private var neighborhoodName: String {
@@ -809,6 +826,10 @@ struct HomeView: View {
         neighborhoodDetail?.dataSources ?? []
     }
 
+    private var currentNeighborhoodId: Int {
+        neighborhoodDetail?.neighborhood.id ?? dashboard?.location.neighborhoodId ?? 1
+    }
+
     private var unreadNotificationCount: Int {
         dashboard?.notifications.unreadCount ?? 0
     }
@@ -954,6 +975,29 @@ struct HomeView: View {
             return "Düşük"
         }
     }
+
+    private func loadFavoritesIfPossible() async {
+        do {
+            let token = try await authSession.loginIfNeeded()
+            await favoritesViewModel.loadFavorites(token: token)
+            favoritesViewModel.checkIsFavorite(neighborhoodId: currentNeighborhoodId)
+        } catch {
+            print("Favorites bootstrap error:", error)
+        }
+    }
+
+    private func toggleFavorite() async {
+        do {
+            let token = try await authSession.loginIfNeeded()
+            await favoritesViewModel.toggleFavorite(
+                neighborhoodId: currentNeighborhoodId,
+                token: token
+            )
+            favoritesViewModel.checkIsFavorite(neighborhoodId: currentNeighborhoodId)
+        } catch {
+            print("Toggle favorite error:", error)
+        }
+    }
 }
 
 struct HourlyCard: View {
@@ -1063,15 +1107,5 @@ private extension CurrentEnvironmentItem {
 
         let unitText = unit ?? ""
         return "\(value.formattedMetricValue)\(unitText.isEmpty ? "" : " \(unitText)")"
-    }
-}
-
-private extension Double {
-    var formattedMetricValue: String {
-        if truncatingRemainder(dividingBy: 1) == 0 {
-            return String(Int(self))
-        }
-
-        return String(format: "%.1f", self)
     }
 }

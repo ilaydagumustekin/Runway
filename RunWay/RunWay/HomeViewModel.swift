@@ -10,18 +10,22 @@ final class HomeViewModel: ObservableObject {
 
     private let authService: AuthService
     private let dashboardService: DashboardService
+    private let authSession: AuthSession
 
     init() {
         self.authService = AuthService()
         self.dashboardService = DashboardService()
+        self.authSession = AuthSession.shared
     }
 
     init(
         authService: AuthService,
-        dashboardService: DashboardService
+        dashboardService: DashboardService,
+        authSession: AuthSession
     ) {
         self.authService = authService
         self.dashboardService = dashboardService
+        self.authSession = authSession
     }
 
     func loadDashboard() async {
@@ -31,15 +35,12 @@ final class HomeViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            let loginResponse = try await authService.login(
-                email: "admin@example.com",
-                password: "123456"
-            )
-            token = loginResponse.accessToken
+            let accessToken = try await authSession.loginIfNeeded()
+            token = accessToken
 
             let homeResponse = try await dashboardService.fetchHome(
                 neighborhoodId: 1,
-                token: loginResponse.accessToken
+                token: accessToken
             )
 
             dashboard = homeResponse

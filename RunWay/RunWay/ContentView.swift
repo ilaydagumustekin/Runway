@@ -9,6 +9,8 @@ enum Tab: Hashable {
 struct ContentView: View {
     @State private var selectedTab: Tab = .home
     @State private var showSettings = false
+    @StateObject private var authSession = AuthSession.shared
+    @StateObject private var favoritesViewModel = FavoritesViewModel()
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -26,6 +28,8 @@ struct ContentView: View {
                 .tabItem { Label("Rotalarım", systemImage: "clock") }
                 .tag(Tab.routes)
         }
+        .environmentObject(authSession)
+        .environmentObject(favoritesViewModel)
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
