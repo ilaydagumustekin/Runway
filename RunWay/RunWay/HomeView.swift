@@ -5,6 +5,7 @@ import AVFoundation
 struct HomeView: View {
     @Binding var selectedTab: Tab
     @Binding var showSettings: Bool
+    @StateObject private var viewModel = HomeViewModel()
 
     struct TargetSelection: Identifiable {
         let id = UUID()
@@ -25,14 +26,14 @@ struct HomeView: View {
         var id: String { rawValue }
     }
 
-    // MARK: - Mock Data
+    // MARK: - Fallback Mock Data
 
-    private let neighborhoodName = "Modernevler"
-    private let cityName = "Isparta"
+    private let fallbackNeighborhoodName = "Modernevler"
+    private let fallbackCityName = "Isparta"
 
-    private let overallScore = 82
-    private let overallStatus = "İyi"
-    private let lastUpdateText = "Son güncelleme: 2 dk önce"
+    private let fallbackOverallScore = 82
+    private let fallbackOverallStatus = "İyi"
+    private let fallbackLastUpdateText = "Son güncelleme: 2 dk önce"
 
     private let airAQI = 42
     private let noiseDb = 63
@@ -42,8 +43,8 @@ struct HomeView: View {
     private let airDetailStatus = "İyi"
     private let noiseDetailValue = 63
     private let noiseDetailStatus = "Orta"
-    private let weatherTempText = "18°C"
-    private let weatherDesc = "Parçalı Bulutlu"
+    private let fallbackWeatherTempText = "18°C"
+    private let fallbackWeatherDescription = "Parçalı Bulutlu"
 
     private let hourly: [HourlyForecast] = [
         .init(hour: "Şimdi", temp: 9, icon: "cloud.sun.fill"),
@@ -84,6 +85,9 @@ struct HomeView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 14) {
                         header
+                        if let errorMessage = viewModel.errorMessage {
+                            errorBanner(message: errorMessage)
+                        }
                         heroScoreCard
                         homeSegment
                         homeSectionContent
@@ -131,7 +135,11 @@ struct HomeView: View {
                 } else {
                     AVAudioSession.sharedInstance().requestRecordPermission { _ in }
                 }
-            }        }
+            }
+            .task {
+                await viewModel.loadDashboard()
+            }
+        }
     }
 
     // MARK: - Header
@@ -165,12 +173,25 @@ struct HomeView: View {
 
     private func iconButton(system: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: system)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 40, height: 40)
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: system)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 40, height: 40)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                if system == "bell", unreadNotificationCount > 0 {
+                    Text("\(min(unreadNotificationCount, 99))")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.red)
+                        .clipShape(Capsule())
+                        .offset(x: 6, y: -6)
+                }
+            }
         }
         .buttonStyle(.plain)
     }
@@ -215,9 +236,9 @@ struct HomeView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 10) {
-                miniMetric(icon: "wind", title: "Hava", value: "\(airAQI)", unit: "AQI")
-                miniMetric(icon: "speaker.wave.2", title: "Gürültü", value: "\(noiseDb)", unit: "dB")
-                miniMetric(icon: "leaf", title: "Yeşil", value: "\(greenPct)", unit: "%")
+                miniMetric(icon: "wind", title: quickMetrics.airQuality.label, value: quickMetrics.airQuality.valueText, unit: quickMetrics.airQuality.unit)
+                miniMetric(icon: "speaker.wave.2", title: quickMetrics.noise.label, value: quickMetrics.noise.valueText, unit: quickMetrics.noise.unit)
+                miniMetric(icon: "leaf", title: quickMetrics.greenArea.label, value: quickMetrics.greenArea.valueText, unit: quickMetrics.greenArea.unit)
             }
         }
         .padding(16)
@@ -318,37 +339,15 @@ struct HomeView: View {
                 .padding(.top, 4)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                modernStatCard(
-                    title: "Hava Kalitesi",
-                    value: "\(airDetailValue)",
-                    subtitle: airDetailStatus,
-                    icon: "wind",
-                    accent: statusColor(for: airDetailStatus)
-                )
-
-                modernStatCard(
-                    title: "Gürültü",
-                    value: "\(noiseDetailValue) dB",
-                    subtitle: noiseDetailStatus,
-                    icon: "speaker.wave.2",
-                    accent: statusColor(for: noiseDetailStatus)
-                )
-
-                modernStatCard(
-                    title: "Yeşil Alan",
-                    value: "%\(greenPct)",
-                    subtitle: "İyi",
-                    icon: "leaf",
-                    accent: .green
-                )
-
-                modernStatCard(
-                    title: "Hava Durumu",
-                    value: weatherTempText,
-                    subtitle: weatherDesc,
-                    icon: "cloud.sun.fill",
-                    accent: .blue
-                )
+                ForEach(currentEnvironmentItems) { item in
+                    modernStatCard(
+                        title: item.title,
+                        value: item.displayValue,
+                        subtitle: item.status,
+                        icon: iconName(for: item),
+                        accent: accentColor(for: item)
+                    )
+                }
             }
 
             hourlyForecastPanel
@@ -409,7 +408,7 @@ struct HomeView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(hourly) { item in
+                    ForEach(hourlyForecast) { item in
                         HourlyCard(item: item)
                     }
                 }
@@ -466,9 +465,9 @@ struct HomeView: View {
                         Text("Bugün önerilen rota")
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                         Spacer()
-                        Text("%\(suggestedScore)")
+                        Text(activeRouteStatusText)
                             .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(activeRouteStatusColor)
                     }
 
                     HStack(spacing: 14) {
@@ -478,9 +477,9 @@ struct HomeView: View {
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
 
-                    Text(suggestedWarning)
+                    Text(routeWarningText)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(routeWarningColor)
                 }
                 .padding(16)
                 .background(Color(.secondarySystemGroupedBackground))
@@ -488,6 +487,198 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private func errorBanner(message: String) -> some View {
+        Text(message)
+            .font(.system(size: 13, weight: .semibold, design: .rounded))
+            .foregroundStyle(.red)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.red.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var dashboard: DashboardHomeResponse? {
+        viewModel.dashboard
+    }
+
+    private var neighborhoodName: String {
+        dashboard?.location.neighborhoodName ?? fallbackNeighborhoodName
+    }
+
+    private var cityName: String {
+        dashboard?.location.city ?? fallbackCityName
+    }
+
+    private var overallScore: Int {
+        Int((dashboard?.environmentScore.score ?? Double(fallbackOverallScore)).rounded())
+    }
+
+    private var overallStatus: String {
+        dashboard?.environmentScore.category ?? fallbackOverallStatus
+    }
+
+    private var lastUpdateText: String {
+        dashboard?.environmentScore.lastUpdatedText ?? fallbackLastUpdateText
+    }
+
+    private var quickMetrics: QuickMetrics {
+        dashboard?.quickMetrics ?? QuickMetrics(
+            airQuality: MetricItem(label: "Hava", value: Double(airAQI), unit: "AQI"),
+            noise: MetricItem(label: "Gürültü", value: Double(noiseDb), unit: "dB"),
+            greenArea: MetricItem(label: "Yeşil", value: Double(greenPct), unit: "%")
+        )
+    }
+
+    private var currentEnvironmentItems: [CurrentEnvironmentItem] {
+        if let items = dashboard?.currentEnvironment, !items.isEmpty {
+            return items
+        }
+
+        return [
+            CurrentEnvironmentItem(
+                key: "air_quality",
+                title: "Hava Kalitesi",
+                value: Double(airDetailValue),
+                unit: "AQI",
+                status: airDetailStatus,
+                statusKey: "good"
+            ),
+            CurrentEnvironmentItem(
+                key: "noise",
+                title: "Gürültü",
+                value: Double(noiseDetailValue),
+                unit: "dB",
+                status: noiseDetailStatus,
+                statusKey: "moderate"
+            ),
+            CurrentEnvironmentItem(
+                key: "green_area",
+                title: "Yeşil Alan",
+                value: Double(greenPct),
+                unit: "%",
+                status: "İyi",
+                statusKey: "good"
+            ),
+            CurrentEnvironmentItem(
+                key: "weather",
+                title: "Hava Durumu",
+                value: 18,
+                unit: "°C",
+                status: fallbackWeatherDescription,
+                statusKey: "cloudy"
+            )
+        ]
+    }
+
+    private var hourlyForecast: [HourlyForecast] {
+        if let items = dashboard?.hourlyWeather, !items.isEmpty {
+            return items.map {
+                HourlyForecast(
+                    hour: $0.time,
+                    temp: $0.temperature,
+                    icon: weatherIcon(for: $0.condition)
+                )
+            }
+        }
+
+        return hourly
+    }
+
+    private var unreadNotificationCount: Int {
+        dashboard?.notifications.unreadCount ?? 0
+    }
+
+    private var hasActiveRoute: Bool {
+        dashboard?.navigation.hasActiveRoute ?? false
+    }
+
+    private var weatherCard: CurrentEnvironmentItem? {
+        currentEnvironmentItems.first(where: { $0.key == "weather" })
+    }
+
+    private var weatherTempText: String {
+        if let weatherCard {
+            return weatherCard.displayValue
+        }
+
+        return fallbackWeatherTempText
+    }
+
+    private var weatherDesc: String {
+        weatherCard?.status ?? fallbackWeatherDescription
+    }
+
+    private var activeRouteStatusText: String {
+        hasActiveRoute ? "Aktif" : "%\(suggestedScore)"
+    }
+
+    private var activeRouteStatusColor: Color {
+        hasActiveRoute ? .blue : .green
+    }
+
+    private var routeWarningText: String {
+        if hasActiveRoute {
+            return dashboard?.navigation.activeRoute?.routeName ?? "Aktif rota devam ediyor"
+        }
+
+        return suggestedWarning
+    }
+
+    private var routeWarningColor: Color {
+        hasActiveRoute ? .blue : .orange
+    }
+
+    private func iconName(for item: CurrentEnvironmentItem) -> String {
+        switch item.key {
+        case "air_quality":
+            return "wind"
+        case "noise":
+            return "speaker.wave.2"
+        case "green_area":
+            return "leaf"
+        case "weather":
+            return weatherIcon(for: item.status)
+        default:
+            return "circle.fill"
+        }
+    }
+
+    private func accentColor(for item: CurrentEnvironmentItem) -> Color {
+        switch item.key {
+        case "weather":
+            return .blue
+        default:
+            return statusColor(for: item.status)
+        }
+    }
+
+    private func weatherIcon(for condition: String) -> String {
+        let lowercased = condition.lowercased()
+
+        if lowercased.contains("gunes") || lowercased.contains("sun") {
+            return "sun.max.fill"
+        }
+
+        if lowercased.contains("yagmur") || lowercased.contains("rain") || lowercased.contains("drizzle") {
+            return "cloud.rain.fill"
+        }
+
+        if lowercased.contains("firtina") || lowercased.contains("storm") || lowercased.contains("thunder") {
+            return "cloud.bolt.rain.fill"
+        }
+
+        if lowercased.contains("kar") || lowercased.contains("snow") {
+            return "cloud.snow.fill"
+        }
+
+        if lowercased.contains("bulut") || lowercased.contains("cloud") {
+            return "cloud.sun.fill"
+        }
+
+        return "cloud.sun.fill"
     }
 }
 
@@ -511,5 +702,31 @@ struct HourlyCard: View {
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 6)
+    }
+}
+
+private extension MetricItem {
+    var valueText: String {
+        value.formattedMetricValue
+    }
+}
+
+private extension CurrentEnvironmentItem {
+    var displayValue: String {
+        if unit == "%" {
+            return "%\(value.formattedMetricValue)"
+        }
+
+        return "\(value.formattedMetricValue)\(unit.isEmpty ? "" : " \(unit)")"
+    }
+}
+
+private extension Double {
+    var formattedMetricValue: String {
+        if truncatingRemainder(dividingBy: 1) == 0 {
+            return String(Int(self))
+        }
+
+        return String(format: "%.1f", self)
     }
 }
