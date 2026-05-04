@@ -21,6 +21,7 @@ struct HomeView: View {
     @State private var showWeatherDetail = false
     @State private var showSuggestedRouteMap = false
     @State private var selectedSection: HomeSection = .neighborhood
+    @State private var hasLoadedInitialData = false
 
     enum HomeSection: String, CaseIterable, Identifiable {
         case neighborhood = "Mahalle Detayı"
@@ -139,6 +140,8 @@ struct HomeView: View {
                 }
             }
             .task {
+                guard !hasLoadedInitialData else { return }
+                hasLoadedInitialData = true
                 await viewModel.loadDashboard()
                 await neighborhoodDetailViewModel.loadDetails()
             }
@@ -709,7 +712,7 @@ struct HomeView: View {
                     title: "Hava Durumu",
                     value: 18,
                     unit: "°C",
-                    status: weatherDesc,
+                    status: currentWeatherDescription,
                     statusKey: nil
                 )
             ]
@@ -814,20 +817,24 @@ struct HomeView: View {
         dashboard?.navigation.hasActiveRoute ?? false
     }
 
-    private var weatherCard: CurrentEnvironmentItem? {
-        currentEnvironmentItems.first(where: { $0.key == "weather" })
+    private var dashboardWeatherItem: CurrentEnvironmentItem? {
+        dashboard?.currentEnvironment.first(where: { $0.key == "weather" })
     }
 
     private var weatherTempText: String {
-        if let weatherCard {
-            return weatherCard.displayValue
+        if let dashboardWeatherItem {
+            return dashboardWeatherItem.displayValue
         }
 
         return fallbackWeatherTempText
     }
 
+    private var currentWeatherDescription: String {
+        dashboardWeatherItem?.status ?? fallbackWeatherDescription
+    }
+
     private var weatherDesc: String {
-        weatherCard?.status ?? fallbackWeatherDescription
+        currentWeatherDescription
     }
 
     private var activeRouteStatusText: String {
