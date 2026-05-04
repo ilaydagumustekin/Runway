@@ -33,7 +33,7 @@ final class HomeViewModel: ObservableObject {
         do {
             let loginResponse = try await authService.login(
                 email: "admin@example.com",
-                password: "1234567"
+                password: "123456"
             )
             token = loginResponse.accessToken
 
