@@ -1,11 +1,13 @@
 import SwiftUI
 import CoreLocation
 import AVFoundation
+import Charts
 
 struct HomeView: View {
     @Binding var selectedTab: Tab
     @Binding var showSettings: Bool
     @StateObject private var viewModel = HomeViewModel()
+    @StateObject private var neighborhoodDetailViewModel = NeighborhoodDetailViewModel()
 
     struct TargetSelection: Identifiable {
         let id = UUID()
@@ -85,7 +87,7 @@ struct HomeView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 14) {
                         header
-                        if let errorMessage = viewModel.errorMessage {
+                        if let errorMessage = activeErrorMessage {
                             errorBanner(message: errorMessage)
                         }
                         heroScoreCard
@@ -138,6 +140,7 @@ struct HomeView: View {
             }
             .task {
                 await viewModel.loadDashboard()
+                await neighborhoodDetailViewModel.loadDetails()
             }
         }
     }
@@ -155,7 +158,7 @@ struct HomeView: View {
                     Image(systemName: "location.fill")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
-                    Text(cityName)
+                    Text(cityDistrictText)
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
@@ -338,6 +341,8 @@ struct HomeView: View {
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .padding(.top, 4)
 
+            neighborhoodSummaryCard
+
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(currentEnvironmentItems) { item in
                     modernStatCard(
@@ -351,7 +356,52 @@ struct HomeView: View {
             }
 
             hourlyForecastPanel
+            chartSummaryPanel
+            dataSourcesPanel
         }
+    }
+
+    private var neighborhoodSummaryCard: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(detailNeighborhoodName)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+
+                Text(cityDistrictText)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                if !detailUpdatedAtText.isEmpty {
+                    Text(detailUpdatedAtText)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 6) {
+                Text("MYKI")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                Text(mykiScoreText)
+                    .font(.system(size: 28, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.primary)
+
+                Text(mykiCategoryText)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(mykiCategoryColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(mykiCategoryColor.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
     private func modernStatCard(title: String, value: String, subtitle: String, icon: String, accent: Color) -> some View {
@@ -413,6 +463,65 @@ struct HomeView: View {
                     }
                 }
                 .padding(.vertical, 2)
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    private var chartSummaryPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Grafik Özeti")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                MiniChartCard(title: "AQI", values: neighborhoodChartSummary.aqi, color: .blue)
+                MiniChartCard(title: "Gürültü", values: neighborhoodChartSummary.noiseLevelDba, color: .orange)
+                MiniChartCard(title: "Yeşil Alan", values: neighborhoodChartSummary.greenAreaRatio, color: .green)
+                MiniChartCard(title: "MYKI", values: neighborhoodChartSummary.mykiScore, color: .purple)
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    private var dataSourcesPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Veri Kaynakları")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+
+            if neighborhoodDataSources.isEmpty {
+                Text("Henüz veri kaynağı bilgisi yok.")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(neighborhoodDataSources) { source in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(source.name)
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundStyle(.primary)
+
+                            Text(source.typeDisplayText)
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+
+                            Text(source.statusDisplayText)
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color(.systemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(Color(.systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    }
+                }
             }
         }
         .padding(16)
@@ -504,12 +613,32 @@ struct HomeView: View {
         viewModel.dashboard
     }
 
+    private var neighborhoodDetail: NeighborhoodDetailResponse? {
+        neighborhoodDetailViewModel.detail
+    }
+
+    private var activeErrorMessage: String? {
+        neighborhoodDetailViewModel.errorMessage ?? viewModel.errorMessage
+    }
+
     private var neighborhoodName: String {
-        dashboard?.location.neighborhoodName ?? fallbackNeighborhoodName
+        neighborhoodDetail?.neighborhood.name ?? dashboard?.location.neighborhoodName ?? fallbackNeighborhoodName
     }
 
     private var cityName: String {
-        dashboard?.location.city ?? fallbackCityName
+        neighborhoodDetail?.neighborhood.city ?? dashboard?.location.city ?? fallbackCityName
+    }
+
+    private var districtName: String {
+        neighborhoodDetail?.neighborhood.district ?? ""
+    }
+
+    private var cityDistrictText: String {
+        if districtName.isEmpty {
+            return cityName
+        }
+
+        return "\(cityName) · \(districtName)"
     }
 
     private var overallScore: Int {
@@ -533,6 +662,59 @@ struct HomeView: View {
     }
 
     private var currentEnvironmentItems: [CurrentEnvironmentItem] {
+        if let latestData = neighborhoodDetail?.latestEnvironmentalData {
+            return [
+                CurrentEnvironmentItem(
+                    key: "air_quality",
+                    title: "Hava Kalitesi",
+                    value: latestData.aqi,
+                    unit: "AQI",
+                    status: airStatus(for: latestData.aqi),
+                    statusKey: nil
+                ),
+                CurrentEnvironmentItem(
+                    key: "pm25",
+                    title: "PM2.5",
+                    value: latestData.pm25,
+                    unit: "ug/m3",
+                    status: airStatus(for: latestData.pm25),
+                    statusKey: nil
+                ),
+                CurrentEnvironmentItem(
+                    key: "pm10",
+                    title: "PM10",
+                    value: latestData.pm10,
+                    unit: "ug/m3",
+                    status: airStatus(for: latestData.pm10),
+                    statusKey: nil
+                ),
+                CurrentEnvironmentItem(
+                    key: "noise",
+                    title: "Gürültü",
+                    value: latestData.noiseLevelDba,
+                    unit: "dB",
+                    status: noiseStatus(for: latestData.noiseLevelDba),
+                    statusKey: nil
+                ),
+                CurrentEnvironmentItem(
+                    key: "green_area",
+                    title: "Yeşil Alan",
+                    value: latestData.greenAreaRatio,
+                    unit: "%",
+                    status: greenAreaStatus(for: latestData.greenAreaRatio),
+                    statusKey: nil
+                ),
+                CurrentEnvironmentItem(
+                    key: "weather",
+                    title: "Hava Durumu",
+                    value: 18,
+                    unit: "°C",
+                    status: weatherDesc,
+                    statusKey: nil
+                )
+            ]
+        }
+
         if let items = dashboard?.currentEnvironment, !items.isEmpty {
             return items
         }
@@ -587,6 +769,43 @@ struct HomeView: View {
         return hourly
     }
 
+    private var detailNeighborhoodName: String {
+        neighborhoodDetail?.neighborhood.name ?? neighborhoodName
+    }
+
+    private var mykiScoreText: String {
+        let score = neighborhoodDetail?.myki?.score ?? dashboard?.environmentScore.score ?? Double(fallbackOverallScore)
+        return score.formattedMetricValue
+    }
+
+    private var mykiCategoryText: String {
+        if let category = neighborhoodDetail?.myki?.category, !category.isEmpty {
+            return localizedMykiCategory(category)
+        }
+
+        return overallStatus
+    }
+
+    private var mykiCategoryColor: Color {
+        statusColor(for: mykiCategoryText)
+    }
+
+    private var detailUpdatedAtText: String {
+        if let createdAt = neighborhoodDetail?.latestEnvironmentalData?.createdAt, !createdAt.isEmpty {
+            return "Son veri: \(createdAt)"
+        }
+
+        return ""
+    }
+
+    private var neighborhoodChartSummary: ChartSummary {
+        neighborhoodDetail?.chartSummary ?? ChartSummary()
+    }
+
+    private var neighborhoodDataSources: [DataSourceSummary] {
+        neighborhoodDetail?.dataSources ?? []
+    }
+
     private var unreadNotificationCount: Int {
         dashboard?.notifications.unreadCount ?? 0
     }
@@ -635,6 +854,8 @@ struct HomeView: View {
         switch item.key {
         case "air_quality":
             return "wind"
+        case "pm25", "pm10":
+            return "aqi.medium"
         case "noise":
             return "speaker.wave.2"
         case "green_area":
@@ -680,6 +901,52 @@ struct HomeView: View {
 
         return "cloud.sun.fill"
     }
+
+    private func localizedMykiCategory(_ category: String) -> String {
+        switch category.lowercased() {
+        case "high", "good", "iyi":
+            return "İyi"
+        case "medium", "orta":
+            return "Orta"
+        case "low", "poor", "dusuk", "kotu":
+            return "Düşük"
+        default:
+            return category.capitalized
+        }
+    }
+
+    private func airStatus(for value: Double) -> String {
+        switch value {
+        case ..<50:
+            return "İyi"
+        case ..<100:
+            return "Orta"
+        default:
+            return "Düşük"
+        }
+    }
+
+    private func noiseStatus(for value: Double) -> String {
+        switch value {
+        case ..<55:
+            return "İyi"
+        case ..<70:
+            return "Orta"
+        default:
+            return "Düşük"
+        }
+    }
+
+    private func greenAreaStatus(for value: Double) -> String {
+        switch value {
+        case 30...:
+            return "İyi"
+        case 15...:
+            return "Orta"
+        default:
+            return "Düşük"
+        }
+    }
 }
 
 struct HourlyCard: View {
@@ -705,9 +972,75 @@ struct HourlyCard: View {
     }
 }
 
+private struct MiniChartCard: View {
+    let title: String
+    let values: [Double]
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                Spacer()
+                Text(latestValueText)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            Chart(Array(values.enumerated()), id: \.offset) { index, value in
+                LineMark(
+                    x: .value("Index", index),
+                    y: .value("Value", value)
+                )
+                .foregroundStyle(color)
+                .interpolationMethod(.catmullRom)
+
+                AreaMark(
+                    x: .value("Index", index),
+                    y: .value("Value", value)
+                )
+                .foregroundStyle(
+                    .linearGradient(
+                        colors: [color.opacity(0.22), color.opacity(0.04)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .interpolationMethod(.catmullRom)
+            }
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            .frame(height: 90)
+        }
+        .padding(14)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var latestValueText: String {
+        guard let last = values.last else { return "Veri yok" }
+        return last.formattedMetricValue
+    }
+}
+
 private extension MetricItem {
     var valueText: String {
         value.formattedMetricValue
+    }
+}
+
+private extension DataSourceSummary {
+    var typeDisplayText: String {
+        type
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
+    }
+
+    var statusDisplayText: String {
+        status
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
     }
 }
 
