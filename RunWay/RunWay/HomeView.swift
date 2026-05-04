@@ -578,7 +578,7 @@ struct HomeView: View {
             return items.map {
                 HourlyForecast(
                     hour: $0.time,
-                    temp: $0.temperature,
+                    temp: Int($0.temperature.rounded()),
                     icon: weatherIcon(for: $0.condition)
                 )
             }

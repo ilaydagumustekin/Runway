@@ -43,7 +43,7 @@ struct EnvironmentScore: Decodable {
     let category: String
     let categoryKey: String
     let lastUpdatedText: String
-    let updatedAt: Date?
+    let updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case score
@@ -70,6 +70,25 @@ struct MetricItem: Decodable {
     let label: String
     let value: Double
     let unit: String
+
+    enum CodingKeys: String, CodingKey {
+        case label
+        case value
+        case unit
+    }
+
+    init(label: String, value: Double, unit: String) {
+        self.label = label
+        self.value = value
+        self.unit = unit
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        label = try container.decode(String.self, forKey: .label)
+        value = try container.decodeFlexibleDouble(forKey: .value)
+        unit = try container.decode(String.self, forKey: .unit)
+    }
 }
 
 struct CurrentEnvironmentItem: Decodable, Identifiable {
@@ -90,14 +109,59 @@ struct CurrentEnvironmentItem: Decodable, Identifiable {
         case status
         case statusKey = "status_key"
     }
+
+    init(
+        key: String,
+        title: String,
+        value: Double,
+        unit: String,
+        status: String,
+        statusKey: String
+    ) {
+        self.key = key
+        self.title = title
+        self.value = value
+        self.unit = unit
+        self.status = status
+        self.statusKey = statusKey
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = try container.decode(String.self, forKey: .key)
+        title = try container.decode(String.self, forKey: .title)
+        value = try container.decodeFlexibleDouble(forKey: .value)
+        unit = try container.decode(String.self, forKey: .unit)
+        status = try container.decode(String.self, forKey: .status)
+        statusKey = try container.decode(String.self, forKey: .statusKey)
+    }
 }
 
 struct HourlyWeatherItem: Decodable, Identifiable {
     let time: String
-    let temperature: Int
+    let temperature: Double
     let condition: String
 
     var id: String { time }
+
+    enum CodingKeys: String, CodingKey {
+        case time
+        case temperature
+        case condition
+    }
+
+    init(time: String, temperature: Double, condition: String) {
+        self.time = time
+        self.temperature = temperature
+        self.condition = condition
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        time = try container.decode(String.self, forKey: .time)
+        temperature = try container.decodeFlexibleDouble(forKey: .temperature)
+        condition = try container.decode(String.self, forKey: .condition)
+    }
 }
 
 struct DashboardNotifications: Decodable {
@@ -125,7 +189,7 @@ struct ActiveRoute: Decodable {
     let startLongitude: Double
     let destinationLatitude: Double
     let destinationLongitude: Double
-    let startedAt: Date
+    let startedAt: String
 
     enum CodingKeys: String, CodingKey {
         case navigationSessionId = "navigation_session_id"
@@ -135,5 +199,30 @@ struct ActiveRoute: Decodable {
         case destinationLatitude = "destination_latitude"
         case destinationLongitude = "destination_longitude"
         case startedAt = "started_at"
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeFlexibleDouble(forKey key: Key) throws -> Double {
+        if let doubleValue = try decodeIfPresent(Double.self, forKey: key) {
+            return doubleValue
+        }
+
+        if let intValue = try decodeIfPresent(Int.self, forKey: key) {
+            return Double(intValue)
+        }
+
+        if let stringValue = try decodeIfPresent(String.self, forKey: key),
+           let doubleValue = Double(stringValue) {
+            return doubleValue
+        }
+
+        throw DecodingError.typeMismatch(
+            Double.self,
+            DecodingError.Context(
+                codingPath: codingPath + [key],
+                debugDescription: "Expected Double-compatible value for '\(key.stringValue)'."
+            )
+        )
     }
 }

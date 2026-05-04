@@ -40,9 +40,7 @@ final class APIClient {
         encoder.keyEncodingStrategy = .useDefaultKeys
         self.encoder = encoder
 
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.decodeDate)
-        self.decoder = decoder
+        self.decoder = JSONDecoder()
     }
 
     func get<Response: Decodable>(
@@ -135,6 +133,9 @@ final class APIClient {
 
             do {
                 return try decoder.decode(Response.self, from: data)
+            } catch let error as DecodingError {
+                Self.logDecodingError(error, responseData: data)
+                throw APIClientError.decodingFailed
             } catch {
                 throw APIClientError.decodingFailed
             }
@@ -162,27 +163,23 @@ final class APIClient {
         return String(data: data, encoding: .utf8) ?? "Bilinmeyen hata"
     }
 
-    private static func decodeDate(_ decoder: Decoder) throws -> Date {
-        let container = try decoder.singleValueContainer()
-        let value = try container.decode(String.self)
+    private static func logDecodingError(_ error: DecodingError, responseData: Data) {
+        let responseText = String(data: responseData, encoding: .utf8) ?? "<response is not valid UTF-8>"
 
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        if let date = formatter.date(from: value) {
-            return date
+        switch error {
+        case let .typeMismatch(type, context):
+            print("DecodingError.typeMismatch:", type, context.debugDescription, "path:", context.codingPath.map(\.stringValue).joined(separator: "."))
+        case let .valueNotFound(type, context):
+            print("DecodingError.valueNotFound:", type, context.debugDescription, "path:", context.codingPath.map(\.stringValue).joined(separator: "."))
+        case let .keyNotFound(key, context):
+            print("DecodingError.keyNotFound:", key.stringValue, context.debugDescription, "path:", context.codingPath.map(\.stringValue).joined(separator: "."))
+        case let .dataCorrupted(context):
+            print("DecodingError.dataCorrupted:", context.debugDescription, "path:", context.codingPath.map(\.stringValue).joined(separator: "."))
+        @unknown default:
+            print("Unknown DecodingError:", error.localizedDescription)
         }
 
-        formatter.formatOptions = [.withInternetDateTime]
-
-        if let date = formatter.date(from: value) {
-            return date
-        }
-
-        throw DecodingError.dataCorruptedError(
-            in: container,
-            debugDescription: "Tarih formati desteklenmiyor: \(value)"
-        )
+        print("Response payload:", responseText)
     }
 }
 
