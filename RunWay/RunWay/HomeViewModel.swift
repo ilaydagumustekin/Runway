@@ -44,6 +44,7 @@ final class HomeViewModel: ObservableObject {
 
             dashboard = homeResponse
         } catch {
+            print("Dashboard load error:", error)
             errorMessage = error.localizedDescription
         }
 

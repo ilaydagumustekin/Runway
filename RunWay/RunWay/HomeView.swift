@@ -343,7 +343,7 @@ struct HomeView: View {
                     modernStatCard(
                         title: item.title,
                         value: item.displayValue,
-                        subtitle: item.status,
+                        subtitle: item.statusText,
                         icon: iconName(for: item),
                         accent: accentColor(for: item)
                     )
@@ -579,7 +579,7 @@ struct HomeView: View {
                 HourlyForecast(
                     hour: $0.time,
                     temp: Int($0.temperature.rounded()),
-                    icon: weatherIcon(for: $0.condition)
+                    icon: weatherIcon(for: $0.condition ?? "")
                 )
             }
         }
@@ -640,7 +640,7 @@ struct HomeView: View {
         case "green_area":
             return "leaf"
         case "weather":
-            return weatherIcon(for: item.status)
+            return weatherIcon(for: item.status ?? "")
         default:
             return "circle.fill"
         }
@@ -651,7 +651,7 @@ struct HomeView: View {
         case "weather":
             return .blue
         default:
-            return statusColor(for: item.status)
+            return statusColor(for: item.status ?? "")
         }
     }
 
@@ -712,12 +712,17 @@ private extension MetricItem {
 }
 
 private extension CurrentEnvironmentItem {
+    var statusText: String {
+        status ?? ""
+    }
+
     var displayValue: String {
         if unit == "%" {
             return "%\(value.formattedMetricValue)"
         }
 
-        return "\(value.formattedMetricValue)\(unit.isEmpty ? "" : " \(unit)")"
+        let unitText = unit ?? ""
+        return "\(value.formattedMetricValue)\(unitText.isEmpty ? "" : " \(unitText)")"
     }
 }
 

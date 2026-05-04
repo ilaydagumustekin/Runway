@@ -134,7 +134,11 @@ final class APIClient {
             do {
                 return try decoder.decode(Response.self, from: data)
             } catch let error as DecodingError {
-                Self.logDecodingError(error, responseData: data)
+                Self.logDecodingError(
+                    error,
+                    statusCode: httpResponse.statusCode,
+                    responseData: data
+                )
                 throw APIClientError.decodingFailed
             } catch {
                 throw APIClientError.decodingFailed
@@ -163,8 +167,13 @@ final class APIClient {
         return String(data: data, encoding: .utf8) ?? "Bilinmeyen hata"
     }
 
-    private static func logDecodingError(_ error: DecodingError, responseData: Data) {
+    private static func logDecodingError(
+        _ error: DecodingError,
+        statusCode: Int,
+        responseData: Data
+    ) {
         let responseText = String(data: responseData, encoding: .utf8) ?? "<response is not valid UTF-8>"
+        print("Dashboard decode statusCode:", statusCode)
 
         switch error {
         case let .typeMismatch(type, context):
