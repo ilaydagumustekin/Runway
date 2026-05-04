@@ -107,6 +107,21 @@ final class APIClient {
         return try await send(request, decode: Response.self)
     }
 
+    func patch<Response: Decodable>(
+        path: String,
+        token: String? = nil
+    ) async throws -> Response {
+        let request = try makeRequest(
+            path: path,
+            method: "PATCH",
+            queryItems: [],
+            token: token,
+            body: nil
+        )
+
+        return try await send(request, decode: Response.self)
+    }
+
     private func makeRequest(
         path: String,
         method: String,
@@ -204,7 +219,7 @@ final class APIClient {
         responseData: Data
     ) {
         let responseText = String(data: responseData, encoding: .utf8) ?? "<response is not valid UTF-8>"
-        print("Dashboard decode statusCode:", statusCode)
+        print("API decode statusCode:", statusCode)
 
         switch error {
         case let .typeMismatch(type, context):

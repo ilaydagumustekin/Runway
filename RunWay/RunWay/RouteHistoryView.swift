@@ -2,92 +2,7 @@ import SwiftUI
 
 struct RouteHistoryView: View {
     @Binding var selectedTab: Tab
-    @EnvironmentObject private var authSession: AuthSession
-    @EnvironmentObject private var favoritesViewModel: FavoritesViewModel
-
-    enum Filter: CaseIterable, Identifiable {
-        case all
-        case favorites
-
-        var id: String { key }
-
-        private var key: String {
-            switch self {
-            case .all: return "all"
-            case .favorites: return "favorites"
-            }
-        }
-    }
-
-    @State private var filter: Filter = .all
-    @State private var hasLoadedFavorites = false
-
-    private var favoritesCount: Int {
-        favoritesViewModel.favorites.count
-    }
-
-    @State private var routes: [RouteItem] = [
-        .init(
-            from: "Zafer Mahallesi",
-            to: "Fatih Mahallesi",
-            dateText: "22 Şubat 2026",
-            timeText: "14:30",
-            durationText: "12 dk",
-            distanceText: "1.2 km",
-            score: 78,
-            scoreStyle: .good,
-            tags: [],
-            isFavorite: true
-        ),
-        .init(
-            from: "Modernevler",
-            to: "Merkez",
-            dateText: "21 Şubat 2026",
-            timeText: "09:15",
-            durationText: "18 dk",
-            distanceText: "2.1 km",
-            score: 65,
-            scoreStyle: .mid,
-            tags: [.init(text: "Yüksek gürültü", style: .warn)],
-            isFavorite: false
-        ),
-        .init(
-            from: "Zafer Mahallesi",
-            to: "Bahçelievler",
-            dateText: "20 Şubat 2026",
-            timeText: "16:45",
-            durationText: "15 dk",
-            distanceText: "1.8 km",
-            score: 82,
-            scoreStyle: .good,
-            tags: [],
-            isFavorite: true
-        ),
-        .init(
-            from: "Fatih Mahallesi",
-            to: "Çünür",
-            dateText: "19 Şubat 2026",
-            timeText: "11:20",
-            durationText: "22 dk",
-            distanceText: "2.8 km",
-            score: 58,
-            scoreStyle: .bad,
-            tags: [
-                .init(text: "Düşük hava kalitesi", style: .warn),
-                .init(text: "Yoğun trafik", style: .danger)
-            ],
-            isFavorite: false
-        )
-    ]
-
-    private var filteredRoutesIndices: [Int] {
-        switch filter {
-        case .all:
-            return Array(routes.indices)
-        case .favorites:
-            return routes.indices.filter { routes[$0].isFavorite }
-        }
-    }
+    @StateObject private var viewModel = RouteHistoryViewModel()
 
     var body: some View {
         NavigationStack {
@@ -99,7 +14,7 @@ struct RouteHistoryView: View {
                         header
                         filterTabs
 
-                        if let errorMessage = favoritesViewModel.errorMessage, filter == .favorites {
+                        if let errorMessage = viewModel.errorMessage {
                             Text(errorMessage)
                                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.red)
@@ -110,8 +25,8 @@ struct RouteHistoryView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         }
 
-                        if filter == .favorites {
-                            favoriteNeighborhoodList
+                        if viewModel.selectedTab == .favorites {
+                            favoriteRouteList
                         } else {
                             routeList
                         }
@@ -125,9 +40,13 @@ struct RouteHistoryView: View {
             }
             .navigationBarHidden(true)
             .task {
-                guard !hasLoadedFavorites else { return }
-                hasLoadedFavorites = true
-                await loadFavorites()
+                await viewModel.loadInitialDataIfNeeded()
+            }
+            .onChange(of: viewModel.selectedTab) { newValue in
+                guard newValue == .favorites else { return }
+                Task {
+                    await viewModel.loadFavoriteRoutes()
+                }
             }
         }
     }
@@ -159,11 +78,11 @@ struct RouteHistoryView: View {
     }
 
     private var headerSubtitle: String {
-        switch filter {
+        switch viewModel.selectedTab {
         case .all:
-            return "\(routes.count) rota"
+            return "\(viewModel.routes.count) rota"
         case .favorites:
-            return "\(favoritesCount) favori mahalle"
+            return "\(viewModel.favoriteRoutes.count) favori rota"
         }
     }
 
@@ -172,20 +91,20 @@ struct RouteHistoryView: View {
             tabButton(
                 icon: "clock",
                 title: "Tüm Rotalar",
-                isSelected: filter == .all
+                isSelected: viewModel.selectedTab == .all
             ) {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    filter = .all
+                    viewModel.selectedTab = .all
                 }
             }
 
             tabButton(
                 icon: "star",
-                title: "Favoriler (\(favoritesCount))",
-                isSelected: filter == .favorites
+                title: "Favoriler (\(viewModel.favoriteRoutes.count))",
+                isSelected: viewModel.selectedTab == .favorites
             ) {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    filter = .favorites
+                    viewModel.selectedTab = .favorites
                 }
             }
         }
@@ -216,44 +135,46 @@ struct RouteHistoryView: View {
 
     private var routeList: some View {
         VStack(spacing: 14) {
-            ForEach(filteredRoutesIndices, id: \.self) { idx in
-                RouteCard(item: $routes[idx])
-            }
-        }
-    }
-
-    private var favoriteNeighborhoodList: some View {
-        VStack(spacing: 14) {
-            if favoritesViewModel.favorites.isEmpty {
-                Text("Henüz favori mahalle yok.")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            if viewModel.routes.isEmpty, !viewModel.isLoading {
+                emptyState(text: "Henüz rota geçmişi yok.")
             } else {
-                ForEach(favoritesViewModel.favorites) { favorite in
-                    FavoriteNeighborhoodCard(item: favorite) {
-                        await removeFavorite(neighborhoodId: favorite.neighborhoodId)
+                ForEach(viewModel.routes) { route in
+                    RouteCard(
+                        item: route,
+                        isUpdating: viewModel.updatingRouteIDs.contains(route.id)
+                    ) {
+                        await viewModel.toggleFavorite(route: route)
                     }
                 }
             }
         }
     }
 
-    struct RouteItem: Identifiable {
-        let id = UUID()
-        let from: String
-        let to: String
-        let dateText: String
-        let timeText: String
-        let durationText: String
-        let distanceText: String
-        let score: Int
-        let scoreStyle: ScoreStyle
-        let tags: [RouteTag]
-        var isFavorite: Bool
+    private var favoriteRouteList: some View {
+        VStack(spacing: 14) {
+            if viewModel.favoriteRoutes.isEmpty, !viewModel.isLoading {
+                emptyState(text: "Henüz favori rota yok.")
+            } else {
+                ForEach(viewModel.favoriteRoutes) { route in
+                    RouteCard(
+                        item: route,
+                        isUpdating: viewModel.updatingRouteIDs.contains(route.id)
+                    ) {
+                        await viewModel.toggleFavorite(route: route)
+                    }
+                }
+            }
+        }
+    }
+
+    private func emptyState(text: String) -> some View {
+        Text(text)
+            .font(.system(size: 14, weight: .semibold, design: .rounded))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     enum ScoreStyle {
@@ -316,7 +237,9 @@ struct RouteHistoryView: View {
     }
 
     struct RouteCard: View {
-        @Binding var item: RouteItem
+        let item: RouteHistoryItem
+        let isUpdating: Bool
+        let onToggleFavorite: () async -> Void
 
         var body: some View {
             VStack(alignment: .leading, spacing: 12) {
@@ -327,14 +250,14 @@ struct RouteHistoryView: View {
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(.secondary)
 
-                            Text("\(item.from) → \(item.to)")
+                            Text("\(item.fromDisplayName) → \(item.toDisplayName)")
                                 .font(.system(size: 18, weight: .heavy, design: .rounded))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
                         }
 
-                        Text("\(item.dateText)  •  \(item.timeText)")
+                        Text(item.dateTimeDisplayText)
                             .font(.system(size: 13, weight: .bold, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
@@ -342,8 +265,8 @@ struct RouteHistoryView: View {
                     Spacer()
 
                     Button {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                            item.isFavorite.toggle()
+                        Task {
+                            await onToggleFavorite()
                         }
                     } label: {
                         Image(systemName: item.isFavorite ? "heart.fill" : "heart")
@@ -353,22 +276,21 @@ struct RouteHistoryView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .disabled(isUpdating)
                 }
 
                 HStack(spacing: 14) {
-                    metaPill(icon: "clock", text: item.durationText)
-                    metaPill(icon: "point.topleft.down.curvedto.point.bottomright.up", text: item.distanceText)
+                    metaPill(icon: "clock", text: item.durationDisplayText)
+                    metaPill(icon: "point.topleft.down.curvedto.point.bottomright.up", text: item.distanceDisplayText)
 
                     Spacer()
 
-                    scoreBadge(score: item.score, style: item.scoreStyle)
+                    scoreBadge(score: item.scoreDisplayValue, style: item.scoreStyle)
                 }
 
-                if !item.tags.isEmpty {
+                if let warningText = item.warningText, !warningText.isEmpty {
                     HStack(spacing: 10) {
-                        ForEach(item.tags) { t in
-                            tagChip(t)
-                        }
+                        tagChip(.init(text: warningText, style: .warn))
                     }
                 }
             }
@@ -419,112 +341,72 @@ struct RouteHistoryView: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
-
-    struct FavoriteNeighborhoodCard: View {
-        let item: FavoriteNeighborhoodResponse
-        let onRemove: () async -> Void
-
-        var body: some View {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(item.displayName)
-                            .font(.system(size: 18, weight: .heavy, design: .rounded))
-                            .foregroundStyle(.primary)
-
-                        Text(item.locationText)
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Button {
-                        Task {
-                            await onRemove()
-                        }
-                    } label: {
-                        Image(systemName: "heart.fill")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(Color.red)
-                            .padding(6)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                HStack(spacing: 14) {
-                    miniPill(icon: "calendar", text: item.createdAtDisplayText)
-
-                    if let mykiText = item.mykiDisplayText {
-                        miniPill(icon: "gauge.with.dots.needle.50percent", text: mykiText)
-                    }
-                }
-            }
-            .padding(16)
-            .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .shadow(color: Color.black.opacity(0.06), radius: 14, x: 0, y: 10)
-        }
-
-        private func miniPill(icon: String, text: String) -> some View {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.secondary)
-                Text(text)
-                    .font(.system(size: 13, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.primary)
-            }
-        }
-    }
-
-    private func loadFavorites() async {
-        do {
-            let token = try await authSession.loginIfNeeded()
-            await favoritesViewModel.loadFavorites(token: token)
-        } catch {
-            print("Favorites screen load error:", error)
-        }
-    }
-
-    private func removeFavorite(neighborhoodId: Int) async {
-        do {
-            let token = try await authSession.loginIfNeeded()
-            await favoritesViewModel.removeFavorite(neighborhoodId: neighborhoodId, token: token)
-        } catch {
-            print("Favorites screen remove error:", error)
-        }
-    }
 }
 
 #Preview {
     RouteHistoryView(selectedTab: .constant(.home))
 }
 
-private extension FavoriteNeighborhoodResponse {
-    var displayName: String {
-        neighborhood?.name ?? name ?? "Mahalle"
-    }
-
-    var locationText: String {
-        let cityText = neighborhood?.city ?? city ?? ""
-        let districtText = neighborhood?.district ?? district ?? ""
-
-        if districtText.isEmpty {
-            return cityText
+private extension RouteHistoryItem {
+    var fromDisplayName: String {
+        if let fromName, !fromName.isEmpty {
+            return fromName
         }
 
-        return "\(cityText) · \(districtText)"
+        return "Mevcut Konum"
     }
 
-    var createdAtDisplayText: String {
-        createdAt.isEmpty ? "Tarih yok" : createdAt
+    var toDisplayName: String {
+        if let toName, !toName.isEmpty {
+            return toName
+        }
+
+        if let target, !target.isEmpty {
+            return target
+        }
+
+        return "Hedef"
     }
 
-    var mykiDisplayText: String? {
-        let score = neighborhood?.mykiScore ?? mykiScore
-        guard let score else { return nil }
-        return "MYKI \(score.formattedMetricValue)"
+    var dateTimeDisplayText: String {
+        if createdAt.isEmpty {
+            return "Tarih yok"
+        }
+
+        let components = createdAt.split(separator: "T", maxSplits: 1).map(String.init)
+
+        if components.count == 2 {
+            let timeText = components[1].prefix(5)
+            return "\(components[0])  •  \(timeText)"
+        }
+
+        return createdAt
+    }
+
+    var durationDisplayText: String {
+        guard let etaMinutes else { return "-- dk" }
+        return "\(etaMinutes) dk"
+    }
+
+    var distanceDisplayText: String {
+        guard let distanceKm else { return "-- km" }
+        return "\(distanceKm.formattedMetricValue) km"
+    }
+
+    var scoreDisplayValue: Int {
+        Int((routeScore ?? 0).rounded())
+    }
+
+    var scoreStyle: RouteHistoryView.ScoreStyle {
+        let score = routeScore ?? 0
+
+        switch score {
+        case 75...:
+            return .good
+        case 60..<75:
+            return .mid
+        default:
+            return .bad
+        }
     }
 }
