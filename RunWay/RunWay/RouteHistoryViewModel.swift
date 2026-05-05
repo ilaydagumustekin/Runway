@@ -80,16 +80,16 @@ final class RouteHistoryViewModel: ObservableObject {
         let originalRoute = route
         let optimisticRoute = RouteHistoryItem(
             id: route.id,
-            createdAt: route.createdAt,
+            userId: route.userId,
+            routeName: route.routeName,
+            startLatitude: route.startLatitude,
+            startLongitude: route.startLongitude,
+            destinationLatitude: route.destinationLatitude,
+            destinationLongitude: route.destinationLongitude,
+            estimatedDurationMinutes: route.estimatedDurationMinutes,
+            environmentalScore: route.environmentalScore,
             isFavorite: !route.isFavorite,
-            target: route.target,
-            travelMode: route.travelMode,
-            etaMinutes: route.etaMinutes,
-            distanceKm: route.distanceKm,
-            routeScore: route.routeScore,
-            warningText: route.warningText,
-            fromName: route.fromName,
-            toName: route.toName
+            createdAt: route.createdAt
         )
 
         updateRoute(optimisticRoute)
@@ -146,16 +146,16 @@ final class RouteHistoryViewModel: ObservableObject {
         routes = routes.map { route in
             RouteHistoryItem(
                 id: route.id,
-                createdAt: route.createdAt,
+                userId: route.userId,
+                routeName: route.routeName,
+                startLatitude: route.startLatitude,
+                startLongitude: route.startLongitude,
+                destinationLatitude: route.destinationLatitude,
+                destinationLongitude: route.destinationLongitude,
+                estimatedDurationMinutes: route.estimatedDurationMinutes,
+                environmentalScore: route.environmentalScore,
                 isFavorite: favoriteIDs.contains(route.id),
-                target: route.target,
-                travelMode: route.travelMode,
-                etaMinutes: route.etaMinutes,
-                distanceKm: route.distanceKm,
-                routeScore: route.routeScore,
-                warningText: route.warningText,
-                fromName: route.fromName,
-                toName: route.toName
+                createdAt: route.createdAt
             )
         }
     }

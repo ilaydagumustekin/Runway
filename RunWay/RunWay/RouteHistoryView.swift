@@ -205,37 +205,6 @@ struct RouteHistoryView: View {
         }
     }
 
-    struct RouteTag: Identifiable {
-        let id = UUID()
-        let text: String
-        let style: RouteTagStyle
-    }
-
-    enum RouteTagStyle {
-        case warn, danger
-
-        var bg: Color {
-            switch self {
-            case .warn: return Color.orange.opacity(0.14)
-            case .danger: return Color.red.opacity(0.12)
-            }
-        }
-
-        var fg: Color {
-            switch self {
-            case .warn: return Color.orange
-            case .danger: return Color.red
-            }
-        }
-
-        var icon: String {
-            switch self {
-            case .warn: return "exclamationmark.triangle.fill"
-            case .danger: return "exclamationmark.octagon.fill"
-            }
-        }
-    }
-
     struct RouteCard: View {
         let item: RouteHistoryItem
         let isUpdating: Bool
@@ -250,7 +219,7 @@ struct RouteHistoryView: View {
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(.secondary)
 
-                            Text("\(item.fromDisplayName) → \(item.toDisplayName)")
+                            Text(item.routeTitleText)
                                 .font(.system(size: 18, weight: .heavy, design: .rounded))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
@@ -287,12 +256,6 @@ struct RouteHistoryView: View {
 
                     scoreBadge(score: item.scoreDisplayValue, style: item.scoreStyle)
                 }
-
-                if let warningText = item.warningText, !warningText.isEmpty {
-                    HStack(spacing: 10) {
-                        tagChip(.init(text: warningText, style: .warn))
-                    }
-                }
             }
             .padding(16)
             .background(Color(.systemBackground))
@@ -325,21 +288,6 @@ struct RouteHistoryView: View {
             .background(style.bg)
             .clipShape(Capsule())
         }
-
-        private func tagChip(_ tag: RouteTag) -> some View {
-            HStack(spacing: 8) {
-                Image(systemName: tag.style.icon)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(tag.style.fg)
-                Text(tag.text)
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundStyle(tag.style.fg)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(tag.style.bg)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
     }
 }
 
@@ -348,28 +296,12 @@ struct RouteHistoryView: View {
 }
 
 private extension RouteHistoryItem {
-    var fromDisplayName: String {
-        if let fromName, !fromName.isEmpty {
-            return fromName
-        }
-
-        return "Mevcut Konum"
-    }
-
-    var toDisplayName: String {
-        if let toName, !toName.isEmpty {
-            return toName
-        }
-
-        if let target, !target.isEmpty {
-            return target
-        }
-
-        return "Hedef"
+    var routeTitleText: String {
+        routeName.isEmpty ? "Rota" : routeName
     }
 
     var dateTimeDisplayText: String {
-        if createdAt.isEmpty {
+        guard let createdAt, !createdAt.isEmpty else {
             return "Tarih yok"
         }
 
@@ -384,21 +316,33 @@ private extension RouteHistoryItem {
     }
 
     var durationDisplayText: String {
-        guard let etaMinutes else { return "-- dk" }
-        return "\(etaMinutes) dk"
+        guard let estimatedDurationMinutes else { return "-- dk" }
+        return "\(estimatedDurationMinutes) dk"
     }
 
     var distanceDisplayText: String {
-        guard let distanceKm else { return "-- km" }
-        return "\(distanceKm.formattedMetricValue) km"
+        guard
+            let startLatitude,
+            let startLongitude,
+            let destinationLatitude,
+            let destinationLongitude
+        else {
+            return "-- km"
+        }
+
+        let latDelta = destinationLatitude - startLatitude
+        let lonDelta = destinationLongitude - startLongitude
+        let approxDistance = sqrt((latDelta * latDelta) + (lonDelta * lonDelta)) * 111
+
+        return "\(approxDistance.formattedMetricValue) km"
     }
 
     var scoreDisplayValue: Int {
-        Int((routeScore ?? 0).rounded())
+        Int((environmentalScore ?? 0).rounded())
     }
 
     var scoreStyle: RouteHistoryView.ScoreStyle {
-        let score = routeScore ?? 0
+        let score = environmentalScore ?? 0
 
         switch score {
         case 75...:
