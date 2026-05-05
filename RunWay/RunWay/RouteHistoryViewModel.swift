@@ -1,23 +1,15 @@
 import Foundation
+import Combine
 
 @MainActor
 final class RouteHistoryViewModel: ObservableObject {
-    enum Filter {
-        case all
-        case favorites
-    }
-
     @Published var routes: [RouteHistoryItem] = []
     @Published var favoriteRoutes: [RouteHistoryItem] = []
-    @Published var selectedTab: Filter = .all
     @Published var isLoading = false
     @Published var errorMessage: String?
-    @Published private(set) var updatingRouteIDs: Set<Int> = []
 
     private let service: RouteHistoryService
     private let authSession: AuthSession
-    private var hasLoadedRoutes = false
-    private var hasLoadedFavorites = false
 
     init(
         service: RouteHistoryService = RouteHistoryService(),
@@ -27,13 +19,8 @@ final class RouteHistoryViewModel: ObservableObject {
         self.authSession = authSession
     }
 
-    func loadInitialDataIfNeeded() async {
-        guard !hasLoadedRoutes else { return }
-        await loadRoutes()
-    }
-
-    func loadRoutes(force: Bool = false) async {
-        guard !isLoading || force else { return }
+    func loadRoutes() async {
+        guard !isLoading else { return }
 
         isLoading = true
         errorMessage = nil
@@ -41,8 +28,7 @@ final class RouteHistoryViewModel: ObservableObject {
         do {
             let token = try await authSession.loginIfNeeded()
             routes = try await service.getRouteHistory(token: token)
-            hasLoadedRoutes = true
-            refreshFavoriteRoutesFromRoutes()
+            favoriteRoutes = routes.filter(\.isFavorite)
         } catch {
             print("Route history load error:", error)
             errorMessage = error.localizedDescription
@@ -51,9 +37,8 @@ final class RouteHistoryViewModel: ObservableObject {
         isLoading = false
     }
 
-    func loadFavoriteRoutes(force: Bool = false) async {
-        guard !isLoading || force else { return }
-        guard force || !hasLoadedFavorites else { return }
+    func loadFavoriteRoutes() async {
+        guard !isLoading else { return }
 
         isLoading = true
         errorMessage = nil
@@ -61,8 +46,7 @@ final class RouteHistoryViewModel: ObservableObject {
         do {
             let token = try await authSession.loginIfNeeded()
             favoriteRoutes = try await service.getFavoriteRouteHistory(token: token)
-            hasLoadedFavorites = true
-            mergeFavoritesIntoRoutes()
+            mergeFavoriteRoutesIntoRoutes()
         } catch {
             print("Favorite route history load error:", error)
             errorMessage = error.localizedDescription
@@ -72,27 +56,7 @@ final class RouteHistoryViewModel: ObservableObject {
     }
 
     func toggleFavorite(route: RouteHistoryItem) async {
-        guard !updatingRouteIDs.contains(route.id) else { return }
-
         errorMessage = nil
-        updatingRouteIDs.insert(route.id)
-
-        let originalRoute = route
-        let optimisticRoute = RouteHistoryItem(
-            id: route.id,
-            userId: route.userId,
-            routeName: route.routeName,
-            startLatitude: route.startLatitude,
-            startLongitude: route.startLongitude,
-            destinationLatitude: route.destinationLatitude,
-            destinationLongitude: route.destinationLongitude,
-            estimatedDurationMinutes: route.estimatedDurationMinutes,
-            environmentalScore: route.environmentalScore,
-            isFavorite: !route.isFavorite,
-            createdAt: route.createdAt
-        )
-
-        updateRoute(optimisticRoute)
 
         do {
             let token = try await authSession.loginIfNeeded()
@@ -105,18 +69,10 @@ final class RouteHistoryViewModel: ObservableObject {
             }
 
             updateRoute(updatedRoute)
-            hasLoadedFavorites = false
-
-            if selectedTab == .favorites {
-                await loadFavoriteRoutes(force: true)
-            }
         } catch {
             print("Toggle route favorite error:", error)
-            updateRoute(originalRoute)
             errorMessage = error.localizedDescription
         }
-
-        updatingRouteIDs.remove(route.id)
     }
 
     private func updateRoute(_ updatedRoute: RouteHistoryItem) {
@@ -135,13 +91,9 @@ final class RouteHistoryViewModel: ObservableObject {
         }
     }
 
-    private func refreshFavoriteRoutesFromRoutes() {
-        favoriteRoutes = routes.filter(\.isFavorite)
-    }
-
-    private func mergeFavoritesIntoRoutes() {
+    private func mergeFavoriteRoutesIntoRoutes() {
         guard !routes.isEmpty else { return }
-        let favoriteIDs = Set(favoriteRoutes.map(\.id))
+        let favoriteIDs = Set(favoriteRoutes.map { $0.id })
 
         routes = routes.map { route in
             RouteHistoryItem(

@@ -3,6 +3,13 @@ import SwiftUI
 struct RouteHistoryView: View {
     @Binding var selectedTab: Tab
     @StateObject private var viewModel = RouteHistoryViewModel()
+    @State private var filter: Filter = .all
+    @State private var hasLoadedRoutes = false
+
+    enum Filter {
+        case all
+        case favorites
+    }
 
     var body: some View {
         NavigationStack {
@@ -25,7 +32,7 @@ struct RouteHistoryView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         }
 
-                        if viewModel.selectedTab == .favorites {
+                        if filter == .favorites {
                             favoriteRouteList
                         } else {
                             routeList
@@ -40,9 +47,11 @@ struct RouteHistoryView: View {
             }
             .navigationBarHidden(true)
             .task {
-                await viewModel.loadInitialDataIfNeeded()
+                guard !hasLoadedRoutes else { return }
+                hasLoadedRoutes = true
+                await viewModel.loadRoutes()
             }
-            .onChange(of: viewModel.selectedTab) { newValue in
+            .onChange(of: filter) { newValue in
                 guard newValue == .favorites else { return }
                 Task {
                     await viewModel.loadFavoriteRoutes()
@@ -78,7 +87,7 @@ struct RouteHistoryView: View {
     }
 
     private var headerSubtitle: String {
-        switch viewModel.selectedTab {
+        switch filter {
         case .all:
             return "\(viewModel.routes.count) rota"
         case .favorites:
@@ -91,20 +100,20 @@ struct RouteHistoryView: View {
             tabButton(
                 icon: "clock",
                 title: "Tüm Rotalar",
-                isSelected: viewModel.selectedTab == .all
+                isSelected: filter == .all
             ) {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    viewModel.selectedTab = .all
+                    filter = .all
                 }
             }
 
             tabButton(
                 icon: "star",
                 title: "Favoriler (\(viewModel.favoriteRoutes.count))",
-                isSelected: viewModel.selectedTab == .favorites
+                isSelected: filter == .favorites
             ) {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    viewModel.selectedTab = .favorites
+                    filter = .favorites
                 }
             }
         }
@@ -140,8 +149,7 @@ struct RouteHistoryView: View {
             } else {
                 ForEach(viewModel.routes) { route in
                     RouteCard(
-                        item: route,
-                        isUpdating: viewModel.updatingRouteIDs.contains(route.id)
+                        item: route
                     ) {
                         await viewModel.toggleFavorite(route: route)
                     }
@@ -157,8 +165,7 @@ struct RouteHistoryView: View {
             } else {
                 ForEach(viewModel.favoriteRoutes) { route in
                     RouteCard(
-                        item: route,
-                        isUpdating: viewModel.updatingRouteIDs.contains(route.id)
+                        item: route
                     ) {
                         await viewModel.toggleFavorite(route: route)
                     }
@@ -207,7 +214,6 @@ struct RouteHistoryView: View {
 
     struct RouteCard: View {
         let item: RouteHistoryItem
-        let isUpdating: Bool
         let onToggleFavorite: () async -> Void
 
         var body: some View {
@@ -245,7 +251,6 @@ struct RouteHistoryView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(isUpdating)
                 }
 
                 HStack(spacing: 14) {
