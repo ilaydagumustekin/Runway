@@ -8,6 +8,7 @@ struct HomeView: View {
     @Binding var showSettings: Bool
     @EnvironmentObject private var authSession: AuthSession
     @EnvironmentObject private var favoritesViewModel: FavoritesViewModel
+    @EnvironmentObject private var notificationsViewModel: NotificationsViewModel
     @StateObject private var viewModel = HomeViewModel()
     @StateObject private var neighborhoodDetailViewModel = NeighborhoodDetailViewModel()
 
@@ -147,6 +148,7 @@ struct HomeView: View {
                 await viewModel.loadDashboard()
                 await neighborhoodDetailViewModel.loadDetails()
                 await loadFavoritesIfPossible()
+                await notificationsViewModel.loadNotifications()
             }
         }
     }
@@ -638,7 +640,7 @@ struct HomeView: View {
     }
 
     private var activeErrorMessage: String? {
-        favoritesViewModel.errorMessage ?? neighborhoodDetailViewModel.errorMessage ?? viewModel.errorMessage
+        notificationsViewModel.errorMessage ?? favoritesViewModel.errorMessage ?? neighborhoodDetailViewModel.errorMessage ?? viewModel.errorMessage
     }
 
     private var neighborhoodName: String {
@@ -831,7 +833,11 @@ struct HomeView: View {
     }
 
     private var unreadNotificationCount: Int {
-        dashboard?.notifications.unreadCount ?? 0
+        if !notificationsViewModel.notifications.isEmpty {
+            return notificationsViewModel.unreadCount
+        }
+
+        return dashboard?.notifications.unreadCount ?? 0
     }
 
     private var hasActiveRoute: Bool {

@@ -1,140 +1,79 @@
 import SwiftUI
 
 struct NotificationsView: View {
+    @EnvironmentObject private var viewModel: NotificationsViewModel
 
-    struct AppNotification: Identifiable {
-        enum Kind {
-            case warningOrange
-            case airRed
-            case successGreen
-            case infoBlue
-
-            var iconName: String {
-                switch self {
-                case .warningOrange: return "exclamationmark.triangle.fill"
-                case .airRed: return "wind"
-                case .successGreen: return "chart.line.uptrend.xyaxis"
-                case .infoBlue: return "mappin.circle.fill"
-                }
-            }
-
-            var iconBg: Color {
-                switch self {
-                case .warningOrange: return .orange
-                case .airRed: return .red
-                case .successGreen: return .green
-                case .infoBlue: return .blue
-                }
-            }
-
-            var cardBg: Color {
-                switch self {
-                case .warningOrange, .airRed:
-                    return Color.blue.opacity(0.10) // üstteki mavi kutu hissi
-                case .successGreen, .infoBlue:
-                    return Color.white
-                }
-            }
-
-            var cardBorder: Color {
-                switch self {
-                case .warningOrange, .airRed:
-                    return Color.blue.opacity(0.25)
-                case .successGreen, .infoBlue:
-                    return Color.clear
-                }
-            }
-        }
-
-        let id = UUID()
-        let kind: Kind
-        let title: String
-        let message: String
-        let timeText: String
-        var isUnread: Bool
-        let section: SectionType
-
-        enum SectionType: String, CaseIterable {
-            case today = "BUGÜN"
-            case earlier = "DAHA ÖNCE"
-        }
+    enum SectionType: String, CaseIterable {
+        case unread = "OKUNMAMIŞ"
+        case read = "OKUNDU"
     }
-
-    @State private var items: [AppNotification] = [
-        .init(kind: .warningOrange,
-              title: "Gürültü Artışı",
-              message: "Modernevler'de gürültü seviyesi 75 dB'e yükseldi. Alternatif rota öneriyoruz.",
-              timeText: "5 dk önce",
-              isUnread: true,
-              section: .today),
-
-        .init(kind: .airRed,
-              title: "Hava Kalitesi Düşüşü",
-              message: "Fatih Mahallesi'nde hava kalitesi 'Orta' seviyesine düştü.",
-              timeText: "1 saat önce",
-              isUnread: true,
-              section: .today),
-
-        .init(kind: .successGreen,
-              title: "Yeni Rota Önerisi",
-              message: "Daha temiz bir rota bulduk. %15 daha az gürültü, %20 daha iyi hava kalitesi.",
-              timeText: "2 saat önce",
-              isUnread: false,
-              section: .earlier),
-
-        .init(kind: .infoBlue,
-              title: "Favori Rotada Risk",
-              message: "BUNNA - Merkez rotanızda yüksek gürültü tespit edildi.",
-              timeText: "Dün",
-              isUnread: false,
-              section: .earlier),
-    ]
-
-    private var unreadCount: Int { items.filter { $0.isUnread }.count }
 
     var body: some View {
         List {
-            // BUGÜN
-            sectionView(.today)
+            if let errorMessage = viewModel.errorMessage {
+                Section {
+                    Text(errorMessage)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.red)
+                }
+            }
 
-            // DAHA ÖNCE
-            sectionView(.earlier)
+            if viewModel.notifications.isEmpty, !viewModel.isLoading {
+                Section {
+                    Text("Henüz bildirim yok.")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            sectionView(.unread)
+            sectionView(.read)
         }
         .listStyle(.plain)
         .navigationTitle("Bildirimler")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if viewModel.notifications.isEmpty {
+                await viewModel.loadNotifications()
+            }
+        }
         .toolbar {
-            // Sağ üst: “Tümünü Okundu İşaretle”
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
-                    markAllRead()
+                    Task {
+                        await markAllRead()
+                    }
                 } label: {
                     Text("Tümünü Okundu İşaretle")
                         .font(.system(size: 15, weight: .semibold))
                 }
+                .disabled(viewModel.unreadCount == 0)
             }
         }
     }
 
     @ViewBuilder
-    private func sectionView(_ type: AppNotification.SectionType) -> some View {
-        let filtered = items.filter { $0.section == type }
+    private func sectionView(_ type: SectionType) -> some View {
+        let filtered = filteredItems(for: type)
         if !filtered.isEmpty {
             Section {
                 ForEach(filtered) { n in
                     NotificationCard(
                         title: n.title,
-                            message: n.message,
-                            timeText: n.timeText,
-                            iconSystemName: n.kind.iconName,
-                            iconBackground: n.kind.iconBg,
-                            isUnread: n.isUnread
+                        message: n.message,
+                        timeText: n.createdAtText,
+                        iconSystemName: n.iconName,
+                        iconBackground: n.iconBackground,
+                        isUnread: !n.isRead,
+                        severityText: n.severityDisplayText,
+                        typeText: n.notificationTypeDisplayText
                     )
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
                     .onTapGesture {
-                        // örnek: tıklanınca okundu yap
-                        markRead(n.id)
+                        Task {
+                            await viewModel.markAsRead(notification: n)
+                        }
                     }
                 }
             } header: {
@@ -146,15 +85,21 @@ struct NotificationsView: View {
         }
     }
 
-    private func markAllRead() {
-        for idx in items.indices {
-            items[idx].isUnread = false
+    private func filteredItems(for type: SectionType) -> [NotificationItem] {
+        switch type {
+        case .unread:
+            return viewModel.notifications.filter { !$0.isRead }
+        case .read:
+            return viewModel.notifications.filter { $0.isRead }
         }
     }
 
-    private func markRead(_ id: UUID) {
-        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
-        items[idx].isUnread = false
+    private func markAllRead() async {
+        let unreadItems = viewModel.notifications.filter { !$0.isRead }
+
+        for item in unreadItems {
+            await viewModel.markAsRead(notification: item)
+        }
     }
 }
 
@@ -165,6 +110,8 @@ private struct NotificationCard: View {
     let iconSystemName: String
     let iconBackground: Color
     let isUnread: Bool
+    let severityText: String
+    let typeText: String
 
     private var cardBackground: Color {
         isUnread ? Color.blue.opacity(0.10) : Color(.systemBackground)
@@ -200,6 +147,20 @@ private struct NotificationCard: View {
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    Text(severityText)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color(.secondarySystemGroupedBackground))
+                        .clipShape(Capsule())
+
+                    Text(typeText)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(16)
@@ -217,5 +178,62 @@ private struct NotificationCard: View {
 #Preview {
     NavigationStack {
         NotificationsView()
+    }
+    .environmentObject(NotificationsViewModel())
+}
+
+private extension NotificationItem {
+    var createdAtText: String {
+        guard let createdAt, !createdAt.isEmpty else { return "" }
+        return createdAt
+    }
+
+    var severityDisplayText: String {
+        severity.isEmpty ? "Bilgi" : severity.capitalized
+    }
+
+    var notificationTypeDisplayText: String {
+        notificationType.isEmpty ? "info" : notificationType.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    var iconName: String {
+        let lowercasedSeverity = severity.lowercased()
+        let lowercasedType = notificationType.lowercased()
+
+        if lowercasedType.contains("air") {
+            return "wind"
+        }
+
+        if lowercasedType.contains("route") {
+            return "map.fill"
+        }
+
+        if lowercasedSeverity.contains("high") || lowercasedSeverity.contains("critical") {
+            return "exclamationmark.octagon.fill"
+        }
+
+        if lowercasedSeverity.contains("medium") || lowercasedSeverity.contains("warning") {
+            return "exclamationmark.triangle.fill"
+        }
+
+        return "bell.fill"
+    }
+
+    var iconBackground: Color {
+        let lowercasedSeverity = severity.lowercased()
+
+        if lowercasedSeverity.contains("high") || lowercasedSeverity.contains("critical") {
+            return .red
+        }
+
+        if lowercasedSeverity.contains("medium") || lowercasedSeverity.contains("warning") {
+            return .orange
+        }
+
+        if lowercasedSeverity.contains("low") || lowercasedSeverity.contains("success") {
+            return .green
+        }
+
+        return .blue
     }
 }

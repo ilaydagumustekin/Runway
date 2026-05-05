@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var showSettings = false
     @StateObject private var authSession = AuthSession.shared
     @StateObject private var favoritesViewModel = FavoritesViewModel()
+    @StateObject private var notificationsViewModel = NotificationsViewModel()
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -30,6 +31,7 @@ struct ContentView: View {
         }
         .environmentObject(authSession)
         .environmentObject(favoritesViewModel)
+        .environmentObject(notificationsViewModel)
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
