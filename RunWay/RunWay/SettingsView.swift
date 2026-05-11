@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @EnvironmentObject private var authSession: AuthSession
     // MARK: - State (mock)
     @State private var locationEnabled = true
     @State private var micEnabled = true
@@ -146,6 +147,14 @@ struct SettingsView: View {
                         AboutView()
                     } label: {
                         TrailingStatusRow(title: "Sürüm", trailing: "1.0.0")
+                    }
+                }
+
+                Section("Hesap") {
+                    NavigationLink {
+                        AccountView()
+                    } label: {
+                        TrailingStatusRow(title: "Hesabım", trailing: authSession.currentUser?.email ?? "")
                     }
                 }
             }

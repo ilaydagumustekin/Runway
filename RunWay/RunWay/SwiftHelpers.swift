@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 
 extension KeyedDecodingContainer {
@@ -66,4 +67,21 @@ extension Double {
 
         return String(format: "%.1f", self)
     }
+}
+
+extension CLLocationCoordinate2D {
+    func distanceKm(to other: CLLocationCoordinate2D) -> Double {
+        let a = CLLocation(latitude: latitude, longitude: longitude)
+        let b = CLLocation(latitude: other.latitude, longitude: other.longitude)
+        return a.distance(from: b) / 1000.0
+    }
+}
+
+func polylineDistanceKm(coordinates: [CLLocationCoordinate2D]) -> Double {
+    guard coordinates.count >= 2 else { return 0 }
+    var total = 0.0
+    for index in 1 ..< coordinates.count {
+        total += coordinates[index - 1].distanceKm(to: coordinates[index])
+    }
+    return total
 }

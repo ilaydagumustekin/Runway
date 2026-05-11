@@ -11,9 +11,14 @@ final class NotificationsViewModel: ObservableObject {
     private let service: NotificationsService
     private let authSession: AuthSession
 
+    init() {
+        self.service = NotificationsService()
+        self.authSession = .shared
+    }
+
     init(
-        service: NotificationsService = NotificationsService(),
-        authSession: AuthSession = .shared
+        service: NotificationsService,
+        authSession: AuthSession
     ) {
         self.service = service
         self.authSession = authSession

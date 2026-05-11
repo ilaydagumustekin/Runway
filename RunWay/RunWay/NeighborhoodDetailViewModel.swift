@@ -17,11 +17,13 @@ final class NeighborhoodDetailViewModel: ObservableObject {
         self.service = service
     }
 
-    func loadDetails(neighborhoodId: Int = 1) async {
+    func loadDetails(neighborhoodId: Int) async {
         guard !isLoading else { return }
 
         isLoading = true
         errorMessage = nil
+
+        RunWayDebugLog.home("NeighborhoodDetailViewModel.loadDetails neighborhoodId=\(neighborhoodId)")
 
         do {
             detail = try await service.fetchDetails(neighborhoodId: neighborhoodId)

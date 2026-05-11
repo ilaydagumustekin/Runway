@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import CoreLocation
 import AVFoundation
 import Charts
@@ -6,6 +7,7 @@ import Charts
 struct HomeView: View {
     @Binding var selectedTab: Tab
     @Binding var showSettings: Bool
+    @EnvironmentObject private var appSession: AppSession
     @EnvironmentObject private var authSession: AuthSession
     @EnvironmentObject private var favoritesViewModel: FavoritesViewModel
     @EnvironmentObject private var notificationsViewModel: NotificationsViewModel
@@ -14,7 +16,8 @@ struct HomeView: View {
 
     struct TargetSelection: Identifiable {
         let id = UUID()
-        let value: String
+        let name: String
+        let coordinate: CLLocationCoordinate2D
     }
 
     @State private var showTargetPicker = false
@@ -25,6 +28,9 @@ struct HomeView: View {
     @State private var showSuggestedRouteMap = false
     @State private var selectedSection: HomeSection = .neighborhood
     @State private var hasLoadedInitialData = false
+    /// Son dashboard isteğinde kullanılan GPS (otomatik yenileme için).
+    @State private var lastDashboardGPS: CLLocation?
+    @State private var lastDashboardAutoReloadAt: Date = .distantPast
 
     enum HomeSection: String, CaseIterable, Identifiable {
         case neighborhood = "Mahalle Detayı"
@@ -34,8 +40,8 @@ struct HomeView: View {
 
     // MARK: - Fallback Mock Data
 
-    private let fallbackNeighborhoodName = "Modernevler"
-    private let fallbackCityName = "Isparta"
+    private let fallbackNeighborhoodName = "Konum alınıyor..."
+    private let fallbackCityName = ""
 
     private let fallbackOverallScore = 82
     private let fallbackOverallStatus = "İyi"
@@ -91,6 +97,10 @@ struct HomeView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 14) {
                         header
+                        if appSession.manualNeighborhoodId != nil,
+                           let manualName = appSession.manualNeighborhoodName {
+                            manualSelectionBanner(name: manualName)
+                        }
                         if let errorMessage = activeErrorMessage {
                             errorBanner(message: errorMessage)
                         }
@@ -103,15 +113,22 @@ struct HomeView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 24)
                 }
+                .refreshable {
+                    await refreshHomeData()
+                }
             }
             .navigationBarHidden(true)
             .sheet(isPresented: $showTargetPicker) {
                 TargetPickerView { target in
-                    selectedTarget = TargetSelection(value: target)
+                    selectedTarget = TargetSelection(name: target.name, coordinate: target.coordinate)
                 }
             }
             .sheet(item: $selectedTarget) { selection in
-                RouteSuggestionView(target: selection.value, selectedTab: $selectedTab)
+                RouteSuggestionView(
+                    target: selection.name,
+                    destinationCoordinate: selection.coordinate,
+                    selectedTab: $selectedTab
+                )
             }
             .navigationDestination(isPresented: $showNotifications) {
                 NotificationsView()
@@ -122,7 +139,7 @@ struct HomeView: View {
                     neighborhoodName: neighborhoodName,
                     currentTempText: weatherTempText,
                     currentDesc: weatherDesc,
-                    hourly: hourly,
+                    hourly: hourlyForecast,
                     daily: dailyMock
                 )
             }
@@ -145,12 +162,99 @@ struct HomeView: View {
             .task {
                 guard !hasLoadedInitialData else { return }
                 hasLoadedInitialData = true
-                await viewModel.loadDashboard()
-                await neighborhoodDetailViewModel.loadDetails()
+                await loadHomeDashboard()
                 await loadFavoritesIfPossible()
                 await notificationsViewModel.loadNotifications()
             }
+            .onChange(of: appSession.manualNeighborhoodId) { _, _ in
+                Task { await loadHomeDashboard() }
+            }
+            .onReceive(AppLocationManager.shared.$lastLocation.compactMap { $0 }) { loc in
+                Task { await considerReloadDashboardIfLocationImproved(loc) }
+            }
         }
+    }
+
+    private func manualSelectionBanner(name: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "map.circle.fill")
+                .font(.title2)
+                .foregroundStyle(.orange)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Haritadan seçilen mahalle")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text(name)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+            }
+
+            Spacer()
+
+            Button("Konumuma dön") {
+                appSession.clearManualSelection()
+            }
+            .font(.system(size: 14, weight: .bold, design: .rounded))
+        }
+        .padding(14)
+        .background(Color.orange.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func loadHomeDashboard() async {
+        if appSession.manualNeighborhoodId != nil {
+            lastDashboardGPS = nil
+        }
+
+        if let manualId = appSession.manualNeighborhoodId {
+            RunWayDebugLog.home("loading home data for neighborhoodId=\(manualId) (manual map selection, no lat/lon on /home)")
+            await viewModel.loadDashboard(manualNeighborhoodId: manualId, latitude: nil, longitude: nil)
+        } else {
+            let loc = await AppLocationManager.shared.waitForBestLocation(timeoutSeconds: 18, desiredAccuracy: 45)
+            let coord = loc?.coordinate ?? AppLocationManager.shared.lastLocation?.coordinate
+            lastDashboardGPS = loc
+            if let c = coord {
+                RunWayDebugLog.location(
+                    "home load GPS chosen: lat=\(c.latitude), lon=\(c.longitude), hAcc_m=\(loc?.horizontalAccuracy ?? -1) "
+                        + "(same coordinate used for GET /dashboard/home latitude & longitude)"
+                )
+                #if DEBUG
+                RunWayLocationDebugGeocoder.logReverseGeocode(coordinate: c)
+                #endif
+            } else {
+                RunWayDebugLog.location("home load GPS chosen: nil (no coordinate)")
+            }
+            await viewModel.loadDashboard(
+                manualNeighborhoodId: nil,
+                latitude: coord?.latitude,
+                longitude: coord?.longitude
+            )
+        }
+        if let nid = viewModel.dashboard?.location.neighborhoodId, nid > 0 {
+            RunWayDebugLog.home("scheduling neighborhood detail fetch for neighborhoodId=\(nid)")
+            appSession.updateAnalysisNeighborhood(id: nid)
+            await neighborhoodDetailViewModel.loadDetails(neighborhoodId: nid)
+        }
+    }
+
+    private func considerReloadDashboardIfLocationImproved(_ loc: CLLocation) async {
+        guard appSession.manualNeighborhoodId == nil else { return }
+        guard hasLoadedInitialData else { return }
+        guard loc.horizontalAccuracy > 0, loc.horizontalAccuracy <= 42 else { return }
+        guard let baseline = lastDashboardGPS else { return }
+
+        let moved = baseline.distance(from: loc)
+        guard moved > 200 else { return }
+
+        let now = Date()
+        guard now.timeIntervalSince(lastDashboardAutoReloadAt) > 28 else { return }
+
+        lastDashboardAutoReloadAt = now
+        lastDashboardGPS = loc
+        RunWayDebugLog.home(
+            "auto reload dashboard: moved_m=\(Int(moved)) newLat=\(loc.coordinate.latitude) newLon=\(loc.coordinate.longitude)"
+        )
+        await loadHomeDashboard()
     }
 
     // MARK: - Header
@@ -385,6 +489,10 @@ struct HomeView: View {
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
+
+                Text(currentLocationText)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -656,11 +764,23 @@ struct HomeView: View {
     }
 
     private var cityDistrictText: String {
+        if dashboard == nil && neighborhoodDetail == nil {
+            return "GPS doğruluğu bekleniyor"
+        }
         if districtName.isEmpty {
             return cityName
         }
 
         return "\(cityName) · \(districtName)"
+    }
+
+    private var currentLocationText: String {
+        guard let coordinate = AppLocationManager.shared.lastLocation?.coordinate else {
+            return "Canlı konum alınıyor..."
+        }
+        let lat = String(format: "%.5f", coordinate.latitude)
+        let lon = String(format: "%.5f", coordinate.longitude)
+        return "Konum: \(lat), \(lon)"
     }
 
     private var overallScore: Int {
@@ -726,14 +846,7 @@ struct HomeView: View {
                     status: greenAreaStatus(for: latestData.greenAreaRatio),
                     statusKey: nil
                 ),
-                CurrentEnvironmentItem(
-                    key: "weather",
-                    title: "Hava Durumu",
-                    value: 18,
-                    unit: "°C",
-                    status: currentWeatherDescription,
-                    statusKey: nil
-                )
+                weatherEnvironmentItem()
             ]
         }
 
@@ -783,12 +896,59 @@ struct HomeView: View {
                 HourlyForecast(
                     hour: $0.time,
                     temp: Int($0.temperature.rounded()),
-                    icon: weatherIcon(for: $0.condition ?? "")
+                    icon: weatherSymbolForConditionKey($0.condition)
                 )
             }
         }
 
         return hourly
+    }
+
+    private func weatherEnvironmentItem() -> CurrentEnvironmentItem {
+        if let w = dashboard?.currentEnvironment.first(where: { $0.key == "weather" }) {
+            return CurrentEnvironmentItem(
+                key: w.key,
+                title: w.title,
+                value: w.value,
+                unit: w.unit,
+                status: w.status,
+                statusKey: w.statusKey
+            )
+        }
+        return CurrentEnvironmentItem(
+            key: "weather",
+            title: "Hava Durumu",
+            value: 18,
+            unit: "°C",
+            status: fallbackWeatherDescription,
+            statusKey: "cloudy"
+        )
+    }
+
+    private func weatherSymbolForConditionKey(_ key: String?) -> String {
+        guard let key, !key.isEmpty else { return "cloud.sun.fill" }
+        switch key.lowercased() {
+        case "clear":
+            return "sun.max.fill"
+        case "mostly_clear":
+            return "sun.haze.fill"
+        case "cloudy":
+            return "cloud.sun.fill"
+        case "fog":
+            return "cloud.fog.fill"
+        case "drizzle":
+            return "cloud.drizzle.fill"
+        case "rain":
+            return "cloud.rain.fill"
+        case "snow":
+            return "cloud.snow.fill"
+        case "thunderstorm":
+            return "cloud.bolt.rain.fill"
+        case "variable":
+            return "cloud.sun.fill"
+        default:
+            return weatherIcon(for: key)
+        }
     }
 
     private var detailNeighborhoodName: String {
@@ -895,7 +1055,7 @@ struct HomeView: View {
         case "green_area":
             return "leaf"
         case "weather":
-            return weatherIcon(for: item.status ?? "")
+            return weatherSymbolForConditionKey(item.statusKey ?? item.status)
         default:
             return "circle.fill"
         }
@@ -913,7 +1073,11 @@ struct HomeView: View {
     private func weatherIcon(for condition: String) -> String {
         let lowercased = condition.lowercased()
 
-        if lowercased.contains("gunes") || lowercased.contains("sun") {
+        if lowercased == "clear" || lowercased == "mostly_clear" {
+            return lowercased == "clear" ? "sun.max.fill" : "sun.haze.fill"
+        }
+
+        if lowercased.contains("gunes") || lowercased.contains("sun") || lowercased.contains("açık") {
             return "sun.max.fill"
         }
 
@@ -1003,6 +1167,12 @@ struct HomeView: View {
         } catch {
             print("Toggle favorite error:", error)
         }
+    }
+
+    private func refreshHomeData() async {
+        AppLocationManager.shared.requestPermission()
+        AppLocationManager.shared.startUpdating()
+        await loadHomeDashboard()
     }
 }
 
