@@ -297,6 +297,7 @@ struct RouteSuggestionView: View {
     // MARK: - Actions
 
     private func startNavigation() {
+        RunWayDebugLog.routeHistory("start button tapped destination=\(target) mode=\(mode.backendValue)")
         let summary = routeSummary
         RouteOverlayStore.shared.setRoute(
             title: summary?.routeName ?? target,

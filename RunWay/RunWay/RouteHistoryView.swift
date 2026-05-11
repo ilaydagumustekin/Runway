@@ -4,7 +4,6 @@ struct RouteHistoryView: View {
     @Binding var selectedTab: Tab
     @StateObject private var viewModel = RouteHistoryViewModel()
     @State private var filter: Filter = .all
-    @State private var hasLoadedRoutes = false
 
     enum Filter {
         case all
@@ -47,8 +46,7 @@ struct RouteHistoryView: View {
             }
             .navigationBarHidden(true)
             .task {
-                guard !hasLoadedRoutes else { return }
-                hasLoadedRoutes = true
+                RunWayDebugLog.routeHistory("all routes screen count=\(viewModel.routes.count) (reloading)")
                 await viewModel.loadRoutes()
             }
             .onChange(of: filter) { _, newValue in

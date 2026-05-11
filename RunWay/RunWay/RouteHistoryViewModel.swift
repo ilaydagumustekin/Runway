@@ -26,10 +26,10 @@ final class RouteHistoryViewModel: ObservableObject {
 
     func loadRoutes() async {
         guard !isLoading else { return }
-
         isLoading = true
         errorMessage = nil
-
+        defer { isLoading = false }
+        RunWayDebugLog.routeHistory("load called count=\(routes.count)")
         do {
             let token = try await authSession.loginIfNeeded()
             routes = try await service.getRouteHistory(token: token)
@@ -39,8 +39,6 @@ final class RouteHistoryViewModel: ObservableObject {
             print("Route history load error:", error)
             errorMessage = error.localizedDescription
         }
-
-        isLoading = false
     }
 
     func loadFavoriteRoutes() async {
