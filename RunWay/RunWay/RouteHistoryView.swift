@@ -52,14 +52,8 @@ struct RouteHistoryView: View {
                 await viewModel.loadRoutes()
             }
             .onChange(of: filter) { _, newValue in
-                Task {
-                    switch newValue {
-                    case .favorites:
-                        await viewModel.loadFavoriteRoutes()
-                    case .all:
-                        await viewModel.reloadRoutes()
-                    }
-                }
+                guard newValue == .favorites else { return }
+                Task { await viewModel.loadFavoriteRoutes() }
             }
         }
     }
@@ -168,10 +162,11 @@ struct RouteHistoryView: View {
                 emptyState(text: "Henüz favori rota yok.")
             } else {
                 ForEach(viewModel.favoriteRoutes) { route in
+                    // Favoriler sekmesinde çöp butonu YOK — kalp sadece favoriden çıkarır, silmez
                     RouteCard(
                         item: route,
-                        onToggleFavorite: { await viewModel.toggleFavorite(route: route) },
-                        onDelete: { await viewModel.deleteRoute(route) }
+                        onToggleFavorite: { await viewModel.removeFromFavorites(route) },
+                        onDelete: nil
                     )
                 }
             }
@@ -219,7 +214,7 @@ struct RouteHistoryView: View {
     struct RouteCard: View {
         let item: RouteHistoryItem
         let onToggleFavorite: () async -> Void
-        let onDelete: () async -> Void
+        let onDelete: (() async -> Void)?
 
         var body: some View {
             VStack(alignment: .leading, spacing: 10) {
@@ -245,21 +240,23 @@ struct RouteHistoryView: View {
                             Image(systemName: item.isFavorite ? "heart.fill" : "heart")
                                 .font(.system(size: 18, weight: .bold))
                                 .foregroundStyle(item.isFavorite ? Color.red : Color.gray.opacity(0.45))
-                                .padding(7)
+                                .padding(8)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
 
-                        Button {
-                            Task { await onDelete() }
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(Color.gray.opacity(0.45))
-                                .padding(7)
-                                .contentShape(Rectangle())
+                        if let onDelete {
+                            Button {
+                                Task { await onDelete() }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(Color.gray.opacity(0.45))
+                                    .padding(8)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
 

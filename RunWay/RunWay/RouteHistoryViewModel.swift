@@ -62,37 +62,70 @@ final class RouteHistoryViewModel: ObservableObject {
     }
 
     func deleteRoute(_ route: RouteHistoryItem) async {
+        RunWayDebugLog.routeHistory("deleteRoute called id=\(route.id)")
         errorMessage = nil
         do {
             let token = try await authSession.loginIfNeeded()
             try await service.deleteRoute(routeHistoryId: route.id, token: token)
             routes.removeAll { $0.id == route.id }
             favoriteRoutes.removeAll { $0.id == route.id }
-            RunWayDebugLog.routeHistory("deleted route id=\(route.id)")
+            RunWayDebugLog.routeHistory(
+                "after delete allRoutesCount=\(routes.count) favoriteRoutesCount=\(favoriteRoutes.count)"
+            )
         } catch {
             print("Delete route error:", error)
             errorMessage = error.localizedDescription
         }
     }
 
-    func toggleFavorite(route: RouteHistoryItem) async {
+    /// Sadece isFavorite durumunu tersine çevirir — routes listesinden SİLMEZ.
+    func removeFromFavorites(_ route: RouteHistoryItem) async {
+        RunWayDebugLog.routeHistory("favorite tab heart tapped id=\(route.id)")
+        RunWayDebugLog.routeHistory("removeFromFavorites called id=\(route.id)")
         errorMessage = nil
+        do {
+            let token = try await authSession.loginIfNeeded()
+            let updatedRoute = try await service.unfavoriteRoute(routeHistoryId: route.id, token: token)
+            // routes'tan silme — sadece isFavorite güncelle
+            if let idx = routes.firstIndex(where: { $0.id == updatedRoute.id }) {
+                routes[idx] = updatedRoute
+            }
+            favoriteRoutes.removeAll { $0.id == updatedRoute.id }
+            RunWayDebugLog.routeHistory(
+                "after favorite removal allRoutesCount=\(routes.count) favoriteRoutesCount=\(favoriteRoutes.count)"
+            )
+            RunWayDebugLog.favorites(
+                "unfavorited route id=\(route.id) count=\(favoriteRoutes.count)"
+            )
+        } catch {
+            print("Remove from favorites error:", error)
+            errorMessage = error.localizedDescription
+        }
+    }
 
+    func toggleFavorite(route: RouteHistoryItem) async {
+        RunWayDebugLog.routeHistory(
+            "toggleFavorite called id=\(route.id) newValue=\(!route.isFavorite)"
+        )
+        errorMessage = nil
         do {
             let token = try await authSession.loginIfNeeded()
             let updatedRoute: RouteHistoryItem
-
             if route.isFavorite {
                 updatedRoute = try await service.unfavoriteRoute(routeHistoryId: route.id, token: token)
-                RunWayDebugLog.routeHistory("remove from favorites only id=\(route.id) isFavorite=false")
-                RunWayDebugLog.favorites("unfavorited route id=\(route.id) count=\(max(0, favoriteRoutes.count - 1))")
+                RunWayDebugLog.favorites(
+                    "unfavorited route id=\(route.id) count=\(max(0, favoriteRoutes.count - 1))"
+                )
             } else {
                 updatedRoute = try await service.favoriteRoute(routeHistoryId: route.id, token: token)
-                RunWayDebugLog.routeHistory("toggle favorite id=\(route.id) isFavorite=true")
-                RunWayDebugLog.favorites("favorited route id=\(route.id) count=\(favoriteRoutes.count + 1)")
+                RunWayDebugLog.favorites(
+                    "favorited route id=\(route.id) count=\(favoriteRoutes.count + 1)"
+                )
             }
-
             updateRoute(updatedRoute)
+            RunWayDebugLog.routeHistory(
+                "after toggleFavorite allRoutesCount=\(routes.count) favoriteRoutesCount=\(favoriteRoutes.count)"
+            )
         } catch {
             print("Toggle route favorite error:", error)
             errorMessage = error.localizedDescription
