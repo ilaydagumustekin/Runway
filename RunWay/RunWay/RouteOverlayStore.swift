@@ -13,6 +13,7 @@ final class RouteOverlayStore: ObservableObject {
     @Published private(set) var destinationCoordinate: CLLocationCoordinate2D?
     @Published private(set) var distanceKm: Double = 0
     @Published private(set) var environmentalScore: Double = 0
+    @Published private(set) var transportMode: String = "walking"
 
     func setRoute(
         title: String,
@@ -20,7 +21,8 @@ final class RouteOverlayStore: ObservableObject {
         destinationName: String = "",
         destinationCoordinate: CLLocationCoordinate2D? = nil,
         distanceKm: Double = 0,
-        environmentalScore: Double = 0
+        environmentalScore: Double = 0,
+        transportMode: String = "walking"
     ) {
         routeTitle = title
         pathCoordinates = path
@@ -28,6 +30,7 @@ final class RouteOverlayStore: ObservableObject {
         self.destinationCoordinate = destinationCoordinate
         self.distanceKm = distanceKm
         self.environmentalScore = environmentalScore
+        self.transportMode = transportMode
     }
 
     func clear() {
@@ -37,5 +40,6 @@ final class RouteOverlayStore: ObservableObject {
         destinationCoordinate = nil
         distanceKm = 0
         environmentalScore = 0
+        transportMode = "walking"
     }
 }

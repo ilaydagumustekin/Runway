@@ -11,37 +11,39 @@ struct ActiveRouteView: View {
     @State private var mapPosition: MapCameraPosition = .automatic
     @State private var navigationRoute: MKRoute?
 
-    enum TravelMode: String, CaseIterable, Identifiable {
-        case walk = "Yürüyüş"
-        case bike = "Bisiklet"
-        case scooter = "Scooter"
-        var id: String { rawValue }
-
-        var icon: String {
-            switch self {
-            case .walk: return "figure.walk"
-            case .bike: return "bicycle"
-            case .scooter: return "scooter"
-            }
-        }
-
-        var speedKmh: Double {
-            switch self { case .walk: return 5; case .bike: return 15; case .scooter: return 20 }
-        }
-    }
-
     @State private var mode: TravelMode = .walk
-    @State private var sheetExpanded: Bool = false
     @State private var cameraFollowing: Bool = true
 
-    // Navigation progress state
+    // Navigation progress
     @State private var remainingDistanceKm: Double = 0
     @State private var remainingDurationMin: Int = 0
-    @State private var nextInstructionText: String = "Rota takip ediliyor"
+    @State private var nextInstructionText: String = "Rota başlıyor"
+    @State private var nextInstructionText2: String = ""
     @State private var nextInstructionDistanceM: Double = 0
     @State private var arrivalTimeText: String = ""
 
+    private var hasRoute: Bool { routeOverlay.destinationCoordinate != nil }
+
+    // MARK: - Body
+
     var body: some View {
+        Group {
+            if hasRoute {
+                navigationContent
+                    .toolbar(.hidden, for: .tabBar)
+            } else {
+                noRoutePlaceholder
+            }
+        }
+        .onAppear {
+            AppLocationManager.shared.requestPermission()
+            AppLocationManager.shared.startUpdating()
+        }
+    }
+
+    // MARK: - Navigation Content
+
+    private var navigationContent: some View {
         ZStack {
             activeRouteMap
                 .ignoresSafeArea()
@@ -56,8 +58,6 @@ struct ActiveRouteView: View {
             bottomSheet
         }
         .onAppear {
-            AppLocationManager.shared.requestPermission()
-            AppLocationManager.shared.startUpdating()
             initNavigationState()
             updateMapCamera()
             Task { await buildMapKitNavigationRouteIfPossible() }
@@ -72,9 +72,37 @@ struct ActiveRouteView: View {
         }
         .onReceive(locationManager.$lastLocation.compactMap { $0 }) { location in
             updateNavigationProgress(userLocation: location)
-            if cameraFollowing {
-                followUser(location)
+            if cameraFollowing { followUser(location) }
+        }
+    }
+
+    // MARK: - No Route Placeholder
+
+    private var noRoutePlaceholder: some View {
+        VStack(spacing: 20) {
+            Spacer()
+            Image(systemName: "map")
+                .font(.system(size: 52))
+                .foregroundStyle(.secondary)
+            VStack(spacing: 8) {
+                Text("Rota seçilmedi")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                Text("Ana sayfadan bir hedef seçerek rota önerisi alın.")
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
             }
+            Button { selectedTab = .home } label: {
+                Text("Ana Sayfaya Dön")
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 14)
+                    .background(Color.green)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            Spacer()
         }
     }
 
@@ -90,27 +118,27 @@ struct ActiveRouteView: View {
                     .stroke(Color.green.opacity(0.92), style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
 
                 if let start = routeOverlay.pathCoordinates.first {
-                    Annotation("Başlangıç", coordinate: start) {
-                        Circle()
-                            .fill(Color.blue)
-                            .frame(width: 12, height: 12)
+                    Annotation("", coordinate: start) {
+                        Circle().fill(Color.blue).frame(width: 12, height: 12)
                             .overlay(Circle().stroke(Color.white, lineWidth: 2))
                     }
                 }
                 if let end = routeOverlay.pathCoordinates.last {
-                    Annotation("Varış", coordinate: end) {
-                        Circle()
-                            .fill(Color.red)
-                            .frame(width: 12, height: 12)
-                            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                    Annotation(routeOverlay.destinationName, coordinate: end) {
+                        ZStack {
+                            Circle().fill(Color.red).frame(width: 32, height: 32).shadow(radius: 3)
+                            Image(systemName: "mappin.fill")
+                                .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                        }
                     }
                 }
-            } else if let user = locationManager.lastLocation?.coordinate {
-                Annotation("Konumun", coordinate: user) {
-                    Image(systemName: "location.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundStyle(.blue)
-                        .shadow(radius: 4)
+            } else if let dest = routeOverlay.destinationCoordinate {
+                Annotation(routeOverlay.destinationName, coordinate: dest) {
+                    ZStack {
+                        Circle().fill(Color.red).frame(width: 32, height: 32).shadow(radius: 3)
+                        Image(systemName: "mappin.fill")
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                    }
                 }
             }
         }
@@ -120,86 +148,101 @@ struct ActiveRouteView: View {
     // MARK: - Direction Banner
 
     private var directionBanner: some View {
-        HStack(spacing: 12) {
-            Button {
-                selectedTab = .home
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
+        VStack(spacing: 0) {
+            // Primary instruction card
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(instructionColor.opacity(0.12))
+                        .frame(width: 54, height: 54)
                     Image(systemName: instructionIcon)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.95))
-                    Text(nextInstructionDistanceM > 0
-                         ? (nextInstructionDistanceM >= 1000
-                            ? String(format: "%.1f km", nextInstructionDistanceM / 1000)
-                            : "\(Int(nextInstructionDistanceM)) m")
-                         : "—")
-                        .font(.system(size: 16, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(instructionColor)
                 }
 
-                Text(nextInstructionText)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.85))
-            }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(nextInstructionDistanceM > 0 ? formatDistance(nextInstructionDistanceM) : "—")
+                        .font(.system(size: 30, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(nextInstructionText)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
 
-            Spacer()
+                Spacer()
 
-            Button { } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                Button { selectedTab = .home } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .background(Color(.tertiarySystemBackground))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, nextInstructionText2.isEmpty ? 14 : 10)
+
+            // Secondary "next" instruction
+            if !nextInstructionText2.isEmpty {
+                HStack(spacing: 10) {
+                    Rectangle()
+                        .fill(Color(.separator))
+                        .frame(width: 1, height: 18)
+                        .padding(.leading, 83)
+                    Text("Sonra: \(nextInstructionText2)")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.bottom, 12)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
-        .background(.ultraThinMaterial.opacity(0.25))
-        .background(Color.black.opacity(0.25))
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.10), radius: 14, y: 4)
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
     }
 
     private var instructionIcon: String {
         switch nextInstructionText {
-        case "Sağa dön":          return "arrow.turn.up.right"
-        case "Sola dön":          return "arrow.turn.up.left"
-        case "Geri dön":          return "arrow.uturn.backward"
-        case "Hedefe ulaştınız":  return "mappin.and.ellipse"
-        default:                  return "arrow.up"
+        case "Sağa dön":         return "arrow.turn.up.right"
+        case "Sola dön":         return "arrow.turn.up.left"
+        case "Geri dön":         return "arrow.uturn.backward"
+        case "Hedefe ulaştınız": return "mappin.and.ellipse"
+        default:                 return "arrow.up"
+        }
+    }
+
+    private var instructionColor: Color {
+        switch nextInstructionText {
+        case "Hedefe ulaştınız": return .green
+        case "Geri dön":         return .red
+        default:                 return .blue
         }
     }
 
     // MARK: - Floating Buttons
 
     private var floatingButtons: some View {
-        VStack(spacing: 10) {
+        VStack {
             Spacer()
-            VStack(spacing: 10) {
-                floatingCircleButton(system: cameraFollowing ? "location.fill" : "location") {
-                    withAnimation { cameraFollowing.toggle() }
-                    if cameraFollowing, let loc = locationManager.lastLocation {
-                        followUser(loc)
-                    } else if !cameraFollowing {
-                        updateMapCamera()
-                    }
+            floatingCircleButton(system: cameraFollowing ? "location.fill" : "location") {
+                withAnimation { cameraFollowing.toggle() }
+                if cameraFollowing, let loc = locationManager.lastLocation {
+                    followUser(loc)
+                } else {
+                    updateMapCamera()
                 }
-                floatingCircleButton(system: "map") { }
-                floatingCircleButton(system: "bell") { }
             }
             .padding(.trailing, 16)
-            .padding(.bottom, sheetExpanded ? 360 : 280)
+            .padding(.bottom, 210)
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
@@ -223,219 +266,110 @@ struct ActiveRouteView: View {
     private var bottomSheet: some View {
         VStack {
             Spacer()
-            VStack(spacing: 12) {
+            VStack(spacing: 0) {
+                // Drag handle
                 Capsule()
-                    .fill(Color.white.opacity(0.35))
-                    .frame(width: 44, height: 5)
+                    .fill(Color.white.opacity(0.30))
+                    .frame(width: 36, height: 4)
                     .padding(.top, 10)
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            sheetExpanded.toggle()
+                    .padding(.bottom, 16)
+
+                // Duration + arrival
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(alignment: .lastTextBaseline, spacing: 6) {
+                            Text("\(remainingDurationMin)")
+                                .font(.system(size: 38, weight: .heavy, design: .rounded))
+                                .foregroundStyle(.white)
+                            Text("dk")
+                                .font(.system(size: 18, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.70))
+                                .padding(.bottom, 4)
                         }
+                        Text(String(format: "%.1f km", remainingDistanceKm))
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.70))
                     }
 
-                routeSummaryRow
+                    Spacer()
 
-                modePicker
-
-                warningRow
-
-                if sheetExpanded {
-                    expandedDetails
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    if !arrivalTimeText.isEmpty {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("varış")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.55))
+                            Text(arrivalTimeText)
+                                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                                .foregroundStyle(.white)
+                        }
+                    }
                 }
+                .padding(.horizontal, 20)
 
-                Spacer().frame(height: 14)
+                Rectangle()
+                    .fill(Color.white.opacity(0.10))
+                    .frame(height: 1)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+
+                // Mode picker + exit
+                HStack(spacing: 8) {
+                    ForEach(TravelMode.allCases) { m in
+                        Button { mode = m } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: m.icon)
+                                    .font(.system(size: 12, weight: .bold))
+                                Text(m.rawValue)
+                                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                            }
+                            .foregroundStyle(mode == m ? .black : .white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(mode == m ? Color.white : Color.white.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Spacer()
+
+                    Button { selectedTab = .home } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Çıkış")
+                                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+
+                Spacer().frame(height: 24)
             }
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(Color.black.opacity(0.68))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    )
+                    .fill(Color.black.opacity(0.72))
             )
             .padding(.horizontal, 10)
-            .padding(.bottom, 10)
-        }
-    }
-
-    private var routeSummaryRow: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Image(systemName: mode.icon)
-                        .font(.system(size: 13, weight: .bold))
-                    Text(mode.rawValue)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                }
-                .foregroundStyle(.white.opacity(0.75))
-
-                HStack(spacing: 4) {
-                    Text(String(format: "%.1f km", remainingDistanceKm))
-                    Text("•").opacity(0.5)
-                    Text("\(remainingDurationMin) dk")
-                }
-                .font(.system(size: 20, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 8) {
-                if !arrivalTimeText.isEmpty {
-                    Label("varış \(arrivalTimeText)", systemImage: "mappin.and.ellipse")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.85))
-                }
-
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        sheetExpanded.toggle()
-                    }
-                } label: {
-                    Image(systemName: sheetExpanded ? "chevron.down" : "chevron.up")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .padding(10)
-                        .background(Color.white.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 16)
-    }
-
-    private var modePicker: some View {
-        HStack(spacing: 10) {
-            ForEach(TravelMode.allCases) { m in
-                Button {
-                    mode = m
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: m.icon)
-                            .font(.system(size: 14, weight: .bold))
-                        Text(m.rawValue)
-                            .font(.system(size: 13, weight: .heavy, design: .rounded))
-                    }
-                    .foregroundStyle(mode == m ? .black : .white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity)
-                    .background(mode == m ? Color.white : Color.white.opacity(0.10))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 16)
-    }
-
-    private var warningRow: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(Color.yellow)
-
-            Text("Gürültülü alan olabilir")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.9))
-
-            Spacer()
-
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    sheetExpanded = true
-                }
-            } label: {
-                Text("Detay")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 2)
-    }
-
-    private var expandedDetails: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Rota Detayları")
-                .font(.system(size: 15, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
-
-            HStack(spacing: 10) {
-                detailChip(title: "Süre", value: "\(remainingDurationMin) dk", icon: "clock")
-                detailChip(
-                    title: "Mesafe",
-                    value: String(format: "%.1f km", remainingDistanceKm),
-                    icon: "point.topleft.down.curvedto.point.bottomright.up"
-                )
-                detailChip(
-                    title: "Skor",
-                    value: routeOverlay.environmentalScore > 0
-                        ? "%\(Int(routeOverlay.environmentalScore.rounded()))"
-                        : "—",
-                    icon: "gauge.with.dots.needle.50percent"
-                )
-            }
-
-            Text("Notlar")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.75))
-
-            VStack(alignment: .leading, spacing: 8) {
-                bullet("Park içinden geçerse gürültü azalır.")
-                bullet("Ana cadde yoğun saatlerde daha riskli olabilir.")
-                bullet("Hava kalitesi iyi bölgeler tercih edildi.")
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 6)
-    }
-
-    private func detailChip(title: String, value: String, icon: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white.opacity(0.85))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.70))
-                Text(value)
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.10))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    private func bullet(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(Color.white.opacity(0.7))
-                .frame(width: 6, height: 6)
-                .padding(.top, 6)
-            Text(text)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.88))
+            .padding(.bottom, 8)
         }
     }
 
     // MARK: - Navigation Logic
 
     private func initNavigationState() {
+        // Sync transport mode from RouteOverlayStore
+        if let m = TravelMode.allCases.first(where: { $0.backendValue == routeOverlay.transportMode }) {
+            mode = m
+        }
+
         let path = routeOverlay.pathCoordinates
         let storedDist = routeOverlay.distanceKm
 
@@ -452,6 +386,7 @@ struct ActiveRouteView: View {
         remainingDurationMin = durationMin(distanceKm: totalDist, speed: mode.speedKmh)
         arrivalTimeText = formatArrivalTime(minutesFromNow: remainingDurationMin)
         nextInstructionText = path.isEmpty ? "Rota bekleniyor" : "Rota başlıyor"
+        nextInstructionText2 = ""
         nextInstructionDistanceM = 0
 
         RunWayDebugLog.activeRoute(
@@ -464,7 +399,12 @@ struct ActiveRouteView: View {
         let path = routeOverlay.pathCoordinates
         guard path.count >= 2 else { return }
 
-        // Nearest point index on path
+        RunWayDebugLog.activeRoute(
+            "user location lat=\(String(format:"%.5f", userLocation.coordinate.latitude))" +
+            " lon=\(String(format:"%.5f", userLocation.coordinate.longitude))"
+        )
+
+        // Nearest point index
         var nearestIdx = 0
         var nearestDist = Double.infinity
         for (i, coord) in path.enumerated() {
@@ -472,7 +412,7 @@ struct ActiveRouteView: View {
             if d < nearestDist { nearestDist = d; nearestIdx = i }
         }
 
-        // Remaining distance from nearest index onward
+        // Remaining distance
         var remaining = 0.0
         for i in nearestIdx..<(path.count - 1) {
             remaining += haversineKm(path[i], path[i + 1])
@@ -481,6 +421,12 @@ struct ActiveRouteView: View {
         remainingDurationMin = durationMin(distanceKm: remaining, speed: mode.speedKmh)
         arrivalTimeText = formatArrivalTime(minutesFromNow: remainingDurationMin)
 
+        RunWayDebugLog.activeRoute(
+            "remaining_distance_km=\(String(format:"%.2f", remaining))" +
+            " remaining_duration_min=\(remainingDurationMin)"
+        )
+
+        // Primary instruction
         if nearestIdx + 1 < path.count {
             let nextCoord = path[nearestIdx + 1]
             nextInstructionDistanceM = userLocation.distance(
@@ -488,16 +434,31 @@ struct ActiveRouteView: View {
             )
             let pathBearing = bearingDegrees(from: path[nearestIdx], to: nextCoord)
             nextInstructionText = turnInstruction(pathBearing: pathBearing, userCourse: userLocation.course)
+            // Secondary instruction (look ahead)
+            nextInstructionText2 = computeNextInstruction(startingAfter: nearestIdx + 1, path: path)
         } else {
             nextInstructionText = "Hedefe ulaştınız"
             nextInstructionDistanceM = 0
+            nextInstructionText2 = ""
         }
 
         RunWayDebugLog.activeRoute(
-            "progress idx=\(nearestIdx)/\(path.count)" +
-            " remaining=\(String(format: "%.2f", remaining))km" +
-            " duration=\(remainingDurationMin)min next=\(nextInstructionText)"
+            "next_instruction=\(nextInstructionText)" +
+            " next_instruction_distance_m=\(Int(nextInstructionDistanceM))"
         )
+    }
+
+    private func computeNextInstruction(startingAfter idx: Int, path: [CLLocationCoordinate2D]) -> String {
+        guard idx + 1 < path.count else { return "" }
+        let refBearing = bearingDegrees(from: path[idx], to: path[min(idx + 1, path.count - 1)])
+        for i in (idx + 1)..<min(idx + 6, path.count - 1) {
+            let b = bearingDegrees(from: path[i], to: path[i + 1])
+            var diff = b - refBearing
+            while diff < -180 { diff += 360 }
+            while diff > 180 { diff -= 360 }
+            if abs(diff) > 30 { return diff > 0 ? "Sağa dön" : "Sola dön" }
+        }
+        return ""
     }
 
     private func recalculateDurationForMode(_ newMode: TravelMode) {
@@ -505,8 +466,8 @@ struct ActiveRouteView: View {
         remainingDurationMin = durationMin(distanceKm: remainingDistanceKm, speed: newMode.speedKmh)
         arrivalTimeText = formatArrivalTime(minutesFromNow: remainingDurationMin)
         RunWayDebugLog.activeRoute(
-            "mode=\(newMode.rawValue) speed=\(newMode.speedKmh)km/h" +
-            " duration=\(remainingDurationMin)min arrival=\(arrivalTimeText)"
+            "selected transport mode=\(newMode.rawValue) speed=\(newMode.speedKmh)km/h" +
+            " remaining_duration_min=\(remainingDurationMin)"
         )
     }
 
@@ -517,6 +478,7 @@ struct ActiveRouteView: View {
                 MapCamera(centerCoordinate: location.coordinate, distance: 700, heading: heading, pitch: 40)
             )
         }
+        RunWayDebugLog.activeRoute("camera follow updated heading=\(Int(heading))")
     }
 
     // MARK: - Geo Helpers
@@ -561,8 +523,14 @@ struct ActiveRouteView: View {
     }
 
     private func formatArrivalTime(minutesFromNow: Int) -> String {
-        let arrival = Date().addingTimeInterval(TimeInterval(minutesFromNow * 60))
-        return arrival.formatted(date: .omitted, time: .shortened)
+        Date().addingTimeInterval(TimeInterval(minutesFromNow * 60))
+            .formatted(date: .omitted, time: .shortened)
+    }
+
+    private func formatDistance(_ meters: Double) -> String {
+        meters >= 1000
+            ? String(format: "%.1f km", meters / 1000)
+            : "\(Int(meters)) m"
     }
 
     // MARK: - Map Camera
@@ -575,17 +543,26 @@ struct ActiveRouteView: View {
         let coords = routeOverlay.pathCoordinates
         if coords.count >= 2 {
             mapPosition = .region(Self.regionFitting(coordinates: coords))
+        } else if let dest = routeOverlay.destinationCoordinate,
+                  let user = locationManager.lastLocation?.coordinate {
+            let dLat = max(0.025, abs(user.latitude - dest.latitude) * 1.8)
+            let dLon = max(0.025, abs(user.longitude - dest.longitude) * 1.8)
+            mapPosition = .region(MKCoordinateRegion(
+                center: CLLocationCoordinate2D(
+                    latitude: (user.latitude + dest.latitude) / 2,
+                    longitude: (user.longitude + dest.longitude) / 2
+                ),
+                span: MKCoordinateSpan(latitudeDelta: dLat, longitudeDelta: dLon)
+            ))
         } else if let user = locationManager.lastLocation?.coordinate {
             mapPosition = .region(
                 MKCoordinateRegion(center: user, span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05))
             )
         } else {
-            mapPosition = .region(
-                MKCoordinateRegion(
-                    center: CLLocationCoordinate2D(latitude: 37.7648, longitude: 30.5566),
-                    span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)
-                )
-            )
+            mapPosition = .region(MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 37.7648, longitude: 30.5566),
+                span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)
+            ))
         }
     }
 
