@@ -139,7 +139,9 @@ struct RouteSuggestionView: View {
                             title: routeSummary?.routeName ?? "Rota",
                             path: coords,
                             destinationName: target,
-                            destinationCoordinate: destinationCoordinate
+                            destinationCoordinate: destinationCoordinate,
+                            distanceKm: routeSummary?.distanceKm ?? 0,
+                            environmentalScore: routeSummary?.environmentalScore ?? 0
                         )
                     }
                     selectedTab = .activeRoute
@@ -190,7 +192,9 @@ struct RouteSuggestionView: View {
                 title: response.routeName,
                 path: response.pathCoordinates,
                 destinationName: target,
-                destinationCoordinate: destinationCoordinate
+                destinationCoordinate: destinationCoordinate,
+                distanceKm: response.distanceKm,
+                environmentalScore: response.environmentalScore
             )
         } catch {
             routeSummary = nil

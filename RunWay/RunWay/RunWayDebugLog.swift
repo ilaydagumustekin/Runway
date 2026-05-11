@@ -37,4 +37,10 @@ enum RunWayDebugLog {
         print("[ROUTE_SEARCH_DEBUG] \(message)")
         #endif
     }
+
+    static func activeRoute(_ message: String) {
+        #if DEBUG
+        print("[ACTIVE_ROUTE_DEBUG] \(message)")
+        #endif
+    }
 }
