@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 
 enum TravelMode: String, CaseIterable, Identifiable {
@@ -17,8 +18,8 @@ enum TravelMode: String, CaseIterable, Identifiable {
 
     var backendValue: String {
         switch self {
-        case .walk: return "walk"
-        case .bike: return "bike"
+        case .walk: return "walking"
+        case .bike: return "bicycle"
         case .scooter: return "scooter"
         }
     }
@@ -28,23 +29,39 @@ struct RouteSuggestionView: View {
     @Environment(\.dismiss) private var dismiss
 
     let target: String
+    let destinationCoordinate: CLLocationCoordinate2D
     @Binding var selectedTab: Tab
 
     @State private var mode: TravelMode = .walk
-    @State private var routeSummary: RouteSuggestionResponse?
+    @State private var routeSummary: RouteRecommendAPIResponse?
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    // Backend başarısız olursa kullanılacak yedek değerler
     private let fallbackEtaMinutes: Int = 12
     private let fallbackDistanceKm: Double = 1.2
     private let fallbackRouteScore: Double = 78
-    private let fallbackWarningText: String = "Uyarı: Gürültülü alan olabilir"
+    private let fallbackWarningText: String = "Çevre skoruna göre önerilen yürüyüş rotası (mock)."
 
-    private var etaText: String { "\(routeSummary?.etaMinutes ?? fallbackEtaMinutes) dk" }
-    private var distanceText: String { String(format: "%.1f km", routeSummary?.distanceKm ?? fallbackDistanceKm) }
-    private var scoreText: String { "%\(Int((routeSummary?.routeScore ?? fallbackRouteScore).rounded()))" }
-    private var warningText: String { routeSummary?.warningText ?? fallbackWarningText }
+    private var etaText: String { "\(routeSummary?.estimatedDurationMinutes ?? fallbackEtaMinutes) dk" }
+
+    private var distanceText: String {
+        if let routeSummary, routeSummary.distanceKm > 0 {
+            return String(format: "%.1f km", routeSummary.distanceKm)
+        }
+        return String(format: "%.1f km", fallbackDistanceKm)
+    }
+
+    private var scoreText: String {
+        let raw = routeSummary?.environmentalScore ?? fallbackRouteScore
+        return "%\(Int(raw.rounded()))"
+    }
+
+    private var warningText: String {
+        if let name = routeSummary?.routeName, !name.isEmpty {
+            return "\(name). \(fallbackWarningText)"
+        }
+        return fallbackWarningText
+    }
 
     var body: some View {
         NavigationStack {
@@ -53,7 +70,6 @@ struct RouteSuggestionView: View {
                 Text("Hedef: \(target)")
                     .font(.headline)
 
-                // Mod seçimi: yürüyüş / bisiklet / scooter
                 HStack(spacing: 10) {
                     ForEach(TravelMode.allCases) { m in
                         Button {
@@ -77,7 +93,6 @@ struct RouteSuggestionView: View {
                     }
                 }
 
-                // Rota özeti
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Rota Özeti")
                         .font(.headline)
@@ -119,6 +134,14 @@ struct RouteSuggestionView: View {
                 Spacer()
 
                 Button {
+                    if let coords = routeSummary?.pathCoordinates, !coords.isEmpty {
+                        RouteOverlayStore.shared.setRoute(
+                            title: routeSummary?.routeName ?? "Rota",
+                            path: coords,
+                            destinationName: target,
+                            destinationCoordinate: destinationCoordinate
+                        )
+                    }
                     selectedTab = .activeRoute
                     dismiss()
                 } label: {
@@ -148,12 +171,30 @@ struct RouteSuggestionView: View {
         isLoading = true
         errorMessage = nil
 
-        do {
-            routeSummary = try await RouteSuggestionAPI().fetchRouteSuggestion(target: target, mode: mode)
-        } catch {
-            errorMessage = "Rota bilgisi alınamadı."
-        }
+        defer { isLoading = false }
 
-        isLoading = false
+        let start = AppLocationManager.shared.lastLocation?.coordinate
+            ?? CLLocationCoordinate2D(latitude: 37.7648, longitude: 30.5566)
+
+        RunWayDebugLog.route("selected transport mode=\(mode.backendValue)")
+
+        do {
+            let response = try await RouteRecommendationService.fetchRecommendation(
+                start: start,
+                destination: destinationCoordinate,
+                transportMode: mode.backendValue,
+                token: nil
+            )
+            routeSummary = response
+            RouteOverlayStore.shared.setRoute(
+                title: response.routeName,
+                path: response.pathCoordinates,
+                destinationName: target,
+                destinationCoordinate: destinationCoordinate
+            )
+        } catch {
+            routeSummary = nil
+            errorMessage = "Rota bilgisi alınamadı. Backend çalışıyor mu?"
+        }
     }
 }

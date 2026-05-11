@@ -1,43 +1,75 @@
+import CoreLocation
 import Foundation
 
-struct RouteSuggestionResponse: Decodable {
-    let target: String
-    let travelMode: String
-    let etaMinutes: Int
+/// Backend `POST /routes/recommend` yanıtı (snake_case).
+struct RouteRecommendAPIResponse: Decodable {
+    let routeName: String
+    let estimatedDurationMinutes: Int
+    let environmentalScore: Double
+    let path: [CoordinatePoint]
     let distanceKm: Double
-    let routeScore: Double
-    let warningText: String
+    let transportMode: String
+    let speedKmh: Double
 
     enum CodingKeys: String, CodingKey {
-        case target
-        case travelMode = "travel_mode"
-        case etaMinutes = "eta_minutes"
+        case routeName = "route_name"
+        case estimatedDurationMinutes = "estimated_duration_minutes"
+        case environmentalScore = "environmental_score"
+        case path
         case distanceKm = "distance_km"
-        case routeScore = "route_score"
-        case warningText = "warning_text"
+        case transportMode = "transport_mode"
+        case speedKmh = "speed_kmh"
+    }
+
+    struct CoordinatePoint: Decodable {
+        let latitude: Double
+        let longitude: Double
+    }
+
+    var pathCoordinates: [CLLocationCoordinate2D] {
+        path.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
     }
 }
 
-struct RouteSuggestionAPI {
-    private let baseURL = URL(string: "http://127.0.0.1:8000")!
+enum RouteRecommendationService {
+    private static let apiClient = APIClient.shared
 
-    func fetchRouteSuggestion(target: String, mode: TravelMode) async throws -> RouteSuggestionResponse {
-        var components = URLComponents(url: baseURL.appendingPathComponent("route-suggestion"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [
-            URLQueryItem(name: "target", value: target),
-            URLQueryItem(name: "mode", value: mode.backendValue)
-        ]
+    static func fetchRecommendation(
+        start: CLLocationCoordinate2D,
+        destination: CLLocationCoordinate2D,
+        transportMode: String = "walking",
+        token: String? = nil
+    ) async throws -> RouteRecommendAPIResponse {
+        struct Body: Encodable {
+            let start: Coord
+            let destination: Coord
+            let transport_mode: String
 
-        guard let url = components?.url else {
-            throw URLError(.badURL)
+            struct Coord: Encodable {
+                let latitude: Double
+                let longitude: Double
+            }
         }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        RunWayDebugLog.route("route request transport_mode=\(transportMode)")
 
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
+        let body = Body(
+            start: .init(latitude: start.latitude, longitude: start.longitude),
+            destination: .init(latitude: destination.latitude, longitude: destination.longitude),
+            transport_mode: transportMode
+        )
 
-        return try JSONDecoder().decode(RouteSuggestionResponse.self, from: data)
+        let response: RouteRecommendAPIResponse = try await apiClient.post(
+            path: "/routes/recommend",
+            body: body,
+            token: token
+        )
+
+        RunWayDebugLog.route(
+            "route response distance_km=\(response.distanceKm)" +
+            " duration_minutes=\(response.estimatedDurationMinutes)"
+        )
+
+        return response
     }
 }
