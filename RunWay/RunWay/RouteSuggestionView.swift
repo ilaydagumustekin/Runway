@@ -193,7 +193,7 @@ struct RouteSuggestionView: View {
                         .foregroundStyle(mode == m ? .white : .secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(mode == m ? Color.green : Color.clear)
+                        .background(mode == m ? Color.black.opacity(0.80) : Color.clear)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                     .buttonStyle(.plain)
@@ -315,18 +315,31 @@ struct RouteSuggestionView: View {
         Task {
             do {
                 let token = try await AuthSession.shared.loginIfNeeded()
+                let displayTitle = "Konumunuz → \(target)"
                 let payload = RouteHistoryCreateRequest(
-                    routeName: summary?.routeName ?? target,
+                    routeName: displayTitle,
                     startLatitude: startCoord.latitude,
                     startLongitude: startCoord.longitude,
                     destinationLatitude: destCoord.latitude,
                     destinationLongitude: destCoord.longitude,
                     estimatedDurationMinutes: summary?.estimatedDurationMinutes ?? 0,
-                    environmentalScore: summary?.environmentalScore ?? 0
+                    environmentalScore: summary?.environmentalScore ?? 0,
+                    transportMode: mode.backendValue,
+                    distanceKm: summary?.distanceKm,
+                    originName: "Konumunuz",
+                    destinationName: target
                 )
-                RunWayDebugLog.routeHistory("saving route name=\(payload.routeName)")
+                RunWayDebugLog.routeHistory(
+                    "saving route title=\(payload.routeName)" +
+                    " origin=\(payload.originName ?? "-") destination=\(payload.destinationName ?? "-")" +
+                    " mode=\(payload.transportMode ?? "-") duration=\(payload.estimatedDurationMinutes)" +
+                    " distance=\(payload.distanceKm.map { String(format: "%.2f", $0) } ?? "-")"
+                )
                 let saved = try await RouteHistoryService().createRoute(payload: payload, token: token)
-                RunWayDebugLog.routeHistory("saved route id=\(saved.id) name=\(saved.routeName)")
+                RunWayDebugLog.routeHistory(
+                    "saved route id=\(saved.id) origin=\(saved.originName ?? "-")" +
+                    " destination=\(saved.destinationName ?? "-") mode=\(saved.transportMode ?? "-")"
+                )
             } catch {
                 RunWayDebugLog.routeHistory("save failed: \(error)")
             }

@@ -8,6 +8,10 @@ struct RouteHistoryCreateRequest: Encodable {
     let destinationLongitude: Double
     let estimatedDurationMinutes: Int
     let environmentalScore: Double
+    let transportMode: String?
+    let distanceKm: Double?
+    let originName: String?
+    let destinationName: String?
 
     enum CodingKeys: String, CodingKey {
         case routeName = "route_name"
@@ -17,6 +21,10 @@ struct RouteHistoryCreateRequest: Encodable {
         case destinationLongitude = "destination_longitude"
         case estimatedDurationMinutes = "estimated_duration_minutes"
         case environmentalScore = "environmental_score"
+        case transportMode = "transport_mode"
+        case distanceKm = "distance_km"
+        case originName = "origin_name"
+        case destinationName = "destination_name"
     }
 }
 
@@ -32,6 +40,10 @@ struct RouteHistoryItem: Decodable, Identifiable {
     let environmentalScore: Double?
     let isFavorite: Bool
     let createdAt: String?
+    let transportMode: String?
+    let distanceKm: Double?
+    let originName: String?
+    let destinationName: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -45,5 +57,9 @@ struct RouteHistoryItem: Decodable, Identifiable {
         case environmentalScore = "environmental_score"
         case isFavorite = "is_favorite"
         case createdAt = "created_at"
+        case transportMode = "transport_mode"
+        case distanceKm = "distance_km"
+        case originName = "origin_name"
+        case destinationName = "destination_name"
     }
 }

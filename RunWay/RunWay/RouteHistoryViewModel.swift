@@ -84,9 +84,11 @@ final class RouteHistoryViewModel: ObservableObject {
 
             if route.isFavorite {
                 updatedRoute = try await service.unfavoriteRoute(routeHistoryId: route.id, token: token)
-                RunWayDebugLog.favorites("unfavorited route id=\(route.id) count=\(favoriteRoutes.count - 1)")
+                RunWayDebugLog.routeHistory("remove from favorites only id=\(route.id) isFavorite=false")
+                RunWayDebugLog.favorites("unfavorited route id=\(route.id) count=\(max(0, favoriteRoutes.count - 1))")
             } else {
                 updatedRoute = try await service.favoriteRoute(routeHistoryId: route.id, token: token)
+                RunWayDebugLog.routeHistory("toggle favorite id=\(route.id) isFavorite=true")
                 RunWayDebugLog.favorites("favorited route id=\(route.id) count=\(favoriteRoutes.count + 1)")
             }
 
@@ -113,6 +115,20 @@ final class RouteHistoryViewModel: ObservableObject {
         }
     }
 
+    func reloadRoutes() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            let token = try await authSession.loginIfNeeded()
+            routes = try await service.getRouteHistory(token: token)
+            favoriteRoutes = routes.filter(\.isFavorite)
+            RunWayDebugLog.routeHistory("reloaded \(routes.count) routes, \(favoriteRoutes.count) favorites")
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func mergeFavoriteRoutesIntoRoutes() {
         guard !routes.isEmpty else { return }
         let favoriteIDs = Set(favoriteRoutes.map { $0.id })
@@ -129,7 +145,11 @@ final class RouteHistoryViewModel: ObservableObject {
                 estimatedDurationMinutes: route.estimatedDurationMinutes,
                 environmentalScore: route.environmentalScore,
                 isFavorite: favoriteIDs.contains(route.id),
-                createdAt: route.createdAt
+                createdAt: route.createdAt,
+                transportMode: route.transportMode,
+                distanceKm: route.distanceKm,
+                originName: route.originName,
+                destinationName: route.destinationName
             )
         }
     }
