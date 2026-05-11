@@ -11,9 +11,14 @@ final class RouteHistoryViewModel: ObservableObject {
     private let service: RouteHistoryService
     private let authSession: AuthSession
 
+    init() {
+        self.service = RouteHistoryService()
+        self.authSession = .shared
+    }
+
     init(
-        service: RouteHistoryService = RouteHistoryService(),
-        authSession: AuthSession = .shared
+        service: RouteHistoryService,
+        authSession: AuthSession
     ) {
         self.service = service
         self.authSession = authSession
@@ -29,6 +34,7 @@ final class RouteHistoryViewModel: ObservableObject {
             let token = try await authSession.loginIfNeeded()
             routes = try await service.getRouteHistory(token: token)
             favoriteRoutes = routes.filter(\.isFavorite)
+            RunWayDebugLog.routeHistory("loaded \(routes.count) routes, \(favoriteRoutes.count) favorites")
         } catch {
             print("Route history load error:", error)
             errorMessage = error.localizedDescription
@@ -55,6 +61,20 @@ final class RouteHistoryViewModel: ObservableObject {
         isLoading = false
     }
 
+    func deleteRoute(_ route: RouteHistoryItem) async {
+        errorMessage = nil
+        do {
+            let token = try await authSession.loginIfNeeded()
+            try await service.deleteRoute(routeHistoryId: route.id, token: token)
+            routes.removeAll { $0.id == route.id }
+            favoriteRoutes.removeAll { $0.id == route.id }
+            RunWayDebugLog.routeHistory("deleted route id=\(route.id)")
+        } catch {
+            print("Delete route error:", error)
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func toggleFavorite(route: RouteHistoryItem) async {
         errorMessage = nil
 
@@ -64,8 +84,10 @@ final class RouteHistoryViewModel: ObservableObject {
 
             if route.isFavorite {
                 updatedRoute = try await service.unfavoriteRoute(routeHistoryId: route.id, token: token)
+                RunWayDebugLog.favorites("unfavorited route id=\(route.id) count=\(favoriteRoutes.count - 1)")
             } else {
                 updatedRoute = try await service.favoriteRoute(routeHistoryId: route.id, token: token)
+                RunWayDebugLog.favorites("favorited route id=\(route.id) count=\(favoriteRoutes.count + 1)")
             }
 
             updateRoute(updatedRoute)

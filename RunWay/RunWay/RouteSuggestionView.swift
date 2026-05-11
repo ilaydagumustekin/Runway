@@ -260,9 +260,10 @@ struct RouteSuggestionView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 17)
-                .background(isLoading ? Color.green.opacity(0.5) : Color.green)
+                .background(isLoading ? Color.black.opacity(0.35) : Color.black.opacity(0.72))
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
             }
             .disabled(isLoading)
             .padding(.horizontal, 20)
@@ -296,16 +297,41 @@ struct RouteSuggestionView: View {
     // MARK: - Actions
 
     private func startNavigation() {
+        let summary = routeSummary
         RouteOverlayStore.shared.setRoute(
-            title: routeSummary?.routeName ?? target,
+            title: summary?.routeName ?? target,
             path: routeCoords,
             destinationName: target,
             destinationCoordinate: destinationCoordinate,
-            distanceKm: routeSummary?.distanceKm ?? 0,
-            environmentalScore: routeSummary?.environmentalScore ?? 0,
+            distanceKm: summary?.distanceKm ?? 0,
+            environmentalScore: summary?.environmentalScore ?? 0,
             transportMode: mode.backendValue
         )
         RunWayDebugLog.activeRoute("mode=navigating transport=\(mode.backendValue)")
+
+        let startCoord = locationManager.lastLocation?.coordinate
+            ?? CLLocationCoordinate2D(latitude: 37.7648, longitude: 30.5566)
+        let destCoord = destinationCoordinate
+        Task {
+            do {
+                let token = try await AuthSession.shared.loginIfNeeded()
+                let payload = RouteHistoryCreateRequest(
+                    routeName: summary?.routeName ?? target,
+                    startLatitude: startCoord.latitude,
+                    startLongitude: startCoord.longitude,
+                    destinationLatitude: destCoord.latitude,
+                    destinationLongitude: destCoord.longitude,
+                    estimatedDurationMinutes: summary?.estimatedDurationMinutes ?? 0,
+                    environmentalScore: summary?.environmentalScore ?? 0
+                )
+                RunWayDebugLog.routeHistory("saving route name=\(payload.routeName)")
+                let saved = try await RouteHistoryService().createRoute(payload: payload, token: token)
+                RunWayDebugLog.routeHistory("saved route id=\(saved.id) name=\(saved.routeName)")
+            } catch {
+                RunWayDebugLog.routeHistory("save failed: \(error)")
+            }
+        }
+
         selectedTab = .activeRoute
         dismiss()
     }

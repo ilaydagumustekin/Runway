@@ -28,4 +28,15 @@ struct RouteHistoryService {
             token: token
         )
     }
+
+    func createRoute(payload: RouteHistoryCreateRequest, token: String) async throws -> RouteHistoryItem {
+        try await apiClient.post(path: "/route-history", body: payload, token: token)
+    }
+
+    func deleteRoute(routeHistoryId: Int, token: String) async throws {
+        let _: [String: String] = try await apiClient.delete(
+            path: "/route-history/\(routeHistoryId)",
+            token: token
+        )
+    }
 }

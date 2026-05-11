@@ -164,11 +164,13 @@ struct TargetPickerView: View {
                     }
                 } label: {
                     Text("Devam")
+                        .font(.system(size: 17, weight: .heavy, design: .rounded))
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(selectedTarget == nil ? Color.gray.opacity(0.3) : Color.green)
+                        .background(selectedTarget == nil ? Color.gray.opacity(0.25) : Color.black.opacity(0.72))
                         .foregroundStyle(selectedTarget == nil ? Color.gray : Color.white)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .shadow(color: .black.opacity(selectedTarget == nil ? 0 : 0.25), radius: 8, y: 3)
                 }
                 .disabled(selectedTarget == nil)
             }

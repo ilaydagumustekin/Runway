@@ -43,4 +43,16 @@ enum RunWayDebugLog {
         print("[ACTIVE_ROUTE_DEBUG] \(message)")
         #endif
     }
+
+    static func routeHistory(_ message: String) {
+        #if DEBUG
+        print("[ROUTE_HISTORY_DEBUG] \(message)")
+        #endif
+    }
+
+    static func favorites(_ message: String) {
+        #if DEBUG
+        print("[FAVORITES_DEBUG] \(message)")
+        #endif
+    }
 }

@@ -51,7 +51,7 @@ struct RouteHistoryView: View {
                 hasLoadedRoutes = true
                 await viewModel.loadRoutes()
             }
-            .onChange(of: filter) { newValue in
+            .onChange(of: filter) { _, newValue in
                 guard newValue == .favorites else { return }
                 Task {
                     await viewModel.loadFavoriteRoutes()
@@ -149,10 +149,10 @@ struct RouteHistoryView: View {
             } else {
                 ForEach(viewModel.routes) { route in
                     RouteCard(
-                        item: route
-                    ) {
-                        await viewModel.toggleFavorite(route: route)
-                    }
+                        item: route,
+                        onToggleFavorite: { await viewModel.toggleFavorite(route: route) },
+                        onDelete: { await viewModel.deleteRoute(route) }
+                    )
                 }
             }
         }
@@ -165,10 +165,10 @@ struct RouteHistoryView: View {
             } else {
                 ForEach(viewModel.favoriteRoutes) { route in
                     RouteCard(
-                        item: route
-                    ) {
-                        await viewModel.toggleFavorite(route: route)
-                    }
+                        item: route,
+                        onToggleFavorite: { await viewModel.toggleFavorite(route: route) },
+                        onDelete: { await viewModel.deleteRoute(route) }
+                    )
                 }
             }
         }
@@ -215,6 +215,7 @@ struct RouteHistoryView: View {
     struct RouteCard: View {
         let item: RouteHistoryItem
         let onToggleFavorite: () async -> Void
+        let onDelete: () async -> Void
 
         var body: some View {
             VStack(alignment: .leading, spacing: 12) {
@@ -239,18 +240,29 @@ struct RouteHistoryView: View {
 
                     Spacer()
 
-                    Button {
-                        Task {
-                            await onToggleFavorite()
+                    HStack(spacing: 4) {
+                        Button {
+                            Task { await onToggleFavorite() }
+                        } label: {
+                            Image(systemName: item.isFavorite ? "heart.fill" : "heart")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(item.isFavorite ? Color.red : Color.gray.opacity(0.55))
+                                .padding(6)
+                                .contentShape(Rectangle())
                         }
-                    } label: {
-                        Image(systemName: item.isFavorite ? "heart.fill" : "heart")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(item.isFavorite ? Color.red : Color.gray.opacity(0.55))
-                            .padding(6)
-                            .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+
+                        Button {
+                            Task { await onDelete() }
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(Color.gray.opacity(0.55))
+                                .padding(6)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
 
                 HStack(spacing: 14) {

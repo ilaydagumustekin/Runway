@@ -1,5 +1,25 @@
 import Foundation
 
+struct RouteHistoryCreateRequest: Encodable {
+    let routeName: String
+    let startLatitude: Double
+    let startLongitude: Double
+    let destinationLatitude: Double
+    let destinationLongitude: Double
+    let estimatedDurationMinutes: Int
+    let environmentalScore: Double
+
+    enum CodingKeys: String, CodingKey {
+        case routeName = "route_name"
+        case startLatitude = "start_latitude"
+        case startLongitude = "start_longitude"
+        case destinationLatitude = "destination_latitude"
+        case destinationLongitude = "destination_longitude"
+        case estimatedDurationMinutes = "estimated_duration_minutes"
+        case environmentalScore = "environmental_score"
+    }
+}
+
 struct RouteHistoryItem: Decodable, Identifiable {
     let id: Int
     let userId: Int?
