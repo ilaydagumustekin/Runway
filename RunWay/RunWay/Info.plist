@@ -2,16 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Yerel backend sunucusuna bağlanmak için yerel ağ erişimi gerekir.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Yakınınızdaki mahalle bazlı çevre verileri ve akıllı rota önerisi için konumunuza erişmemiz gerekiyor.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Çevresel gürültü düzeyini yaklaşık olarak ölçmek için mikrofon erişimi gerekir.</string>
 </dict>
 </plist>

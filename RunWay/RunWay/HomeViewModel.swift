@@ -8,24 +8,30 @@ final class HomeViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var token: String?
+    /// `/integrations/green-area-analysis/{id}` → `analysis.green_percentage`; anasayfa yeşil mini metriği bunu öncelikli kullanır.
+    @Published private(set) var integrationGreenAreaPercent: Double?
 
     private let authService: AuthService
     private let dashboardService: DashboardService
+    private let integrationsService: IntegrationsService
     private let authSession: AuthSession
 
     init() {
         self.authService = AuthService()
         self.dashboardService = DashboardService()
+        self.integrationsService = IntegrationsService()
         self.authSession = AuthSession.shared
     }
 
     init(
         authService: AuthService,
         dashboardService: DashboardService,
+        integrationsService: IntegrationsService = IntegrationsService(),
         authSession: AuthSession
     ) {
         self.authService = authService
         self.dashboardService = dashboardService
+        self.integrationsService = integrationsService
         self.authSession = authSession
     }
 
@@ -38,6 +44,7 @@ final class HomeViewModel: ObservableObject {
 
         isLoading = true
         errorMessage = nil
+        integrationGreenAreaPercent = nil
 
         guard let accessToken = authSession.accessToken, !accessToken.isEmpty else {
             errorMessage = "Oturum bulunamadı. Lütfen yeniden giriş yapın."
@@ -62,6 +69,22 @@ final class HomeViewModel: ObservableObject {
             )
             dashboard = homeResponse
             RunWayDebugLog.home("HomeViewModel: dashboard decoded (see DashboardService for full URL + response.location)")
+
+            let nid = homeResponse.location.neighborhoodId
+            if nid > 0 {
+                do {
+                    let greenResp = try await integrationsService.fetchGreenAreaAnalysis(neighborhoodId: nid, token: accessToken)
+                    integrationGreenAreaPercent = greenResp.analysis?.greenPercentage
+                    if integrationGreenAreaPercent == nil {
+                        RunWayDebugLog.home("green-area-analysis: no analysis.green_percentage for neighborhoodId=\(nid)")
+                    }
+                } catch {
+                    integrationGreenAreaPercent = nil
+                    RunWayDebugLog.home("green-area-analysis fetch failed for neighborhoodId=\(nid): \(error.localizedDescription)")
+                }
+            } else {
+                integrationGreenAreaPercent = nil
+            }
         } catch {
             print("Dashboard load error:", error)
             errorMessage = error.localizedDescription

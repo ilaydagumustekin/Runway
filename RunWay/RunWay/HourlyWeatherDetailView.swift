@@ -28,8 +28,10 @@ struct HourlyWeatherDetailView: View {
                     sectionTitle("Saatlik Tahmin")
                     hourlyStrip
 
-                    sectionTitle("10 Günlük Tahmin")
-                    dailyList
+                    if !daily.isEmpty {
+                        sectionTitle("Günlük Tahmin")
+                        dailyList
+                    }
 
                     Spacer().frame(height: 16)
                 }
@@ -71,30 +73,40 @@ struct HourlyWeatherDetailView: View {
     }
 
     private var hourlyStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(hourly) { item in
-                    VStack(spacing: 10) {
-                        Text(item.hour)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(.secondary)
+        Group {
+            if hourly.isEmpty {
+                Text("Saatlik tahmin verisi yok.")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 12)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(hourly) { item in
+                            VStack(spacing: 10) {
+                                Text(item.hour)
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.secondary)
 
-                        WeatherSymbol(name: item.icon)
-                            .font(.system(size: 22, weight: .semibold))
+                                WeatherSymbol(name: item.icon)
+                                    .font(.system(size: 22, weight: .semibold))
 
-                        Text("\(item.temp)°")
-                            .font(.system(size: 18, weight: .heavy, design: .rounded))
+                                Text("\(item.temp)°")
+                                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                            }
+                            .frame(width: 74, height: 110)
+                            .background(Color(.systemBackground).opacity(0.85))
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .stroke(Color.black.opacity(0.04), lineWidth: 1)
+                            )
+                        }
                     }
-                    .frame(width: 74, height: 110)
-                    .background(Color(.systemBackground).opacity(0.85))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(Color.black.opacity(0.04), lineWidth: 1)
-                    )
+                    .padding(.vertical, 2)
                 }
             }
-            .padding(.vertical, 2)
         }
         .padding(14)
         .background(.ultraThinMaterial)

@@ -55,6 +55,7 @@ struct DashboardService {
 
         let decoded: DashboardHomeResponse = try await apiClient.get(path: path, queryItems: items, token: token)
         let loc = decoded.location
+        print(decoded)
         RunWayDebugLog.neighborhood(
             "/dashboard/home response.location: neighborhood_id=\(loc.neighborhoodId) name=\(loc.neighborhoodName) "
                 + "city=\(loc.city) district=\(loc.district) lat=\(loc.latitude) lon=\(loc.longitude)"

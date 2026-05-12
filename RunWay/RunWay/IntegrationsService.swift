@@ -15,11 +15,11 @@ struct IntegrationsService {
         )
     }
 
-    func fetchGreenAreaAnalysis(neighborhoodId: Int) async throws -> GreenAreaAnalysisResponse {
+    func fetchGreenAreaAnalysis(neighborhoodId: Int, token: String? = nil) async throws -> GreenAreaAnalysisResponse {
         try await apiClient.get(
             path: "/integrations/green-area-analysis/\(neighborhoodId)",
             queryItems: [],
-            token: nil
+            token: token
         )
     }
 

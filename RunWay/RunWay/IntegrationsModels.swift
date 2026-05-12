@@ -7,15 +7,37 @@ struct AirQualityForecastPoint: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case timestamp
+        case time
+        case validAt = "valid_at"
         case predictedAqi = "predicted_aqi"
+        case aqi
+        case value
         case predictedPm25 = "predicted_pm25"
+        case pm25
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        timestamp = try c.decode(String.self, forKey: .timestamp)
-        predictedAqi = try c.decodeFlexibleDouble(forKey: .predictedAqi)
-        predictedPm25 = try c.decodeFlexibleDouble(forKey: .predictedPm25)
+        if let s = try c.decodeIfPresent(String.self, forKey: .timestamp), !s.isEmpty {
+            timestamp = s
+        } else if let s = try c.decodeIfPresent(String.self, forKey: .time), !s.isEmpty {
+            timestamp = s
+        } else if let s = try c.decodeIfPresent(String.self, forKey: .validAt), !s.isEmpty {
+            timestamp = s
+        } else {
+            timestamp = ""
+        }
+
+        predictedAqi =
+            (try? c.decodeFlexibleDoubleIfPresent(forKey: .predictedAqi))
+            ?? (try? c.decodeFlexibleDoubleIfPresent(forKey: .aqi))
+            ?? (try? c.decodeFlexibleDoubleIfPresent(forKey: .value))
+            ?? 0
+
+        predictedPm25 =
+            (try? c.decodeFlexibleDoubleIfPresent(forKey: .predictedPm25))
+            ?? (try? c.decodeFlexibleDoubleIfPresent(forKey: .pm25))
+            ?? 0
     }
 }
 
@@ -30,6 +52,24 @@ struct AirQualityPredictionResponse: Decodable {
         case horizonHours = "horizon_hours"
         case source
         case forecast
+        case predictions
+        case series
+        case data
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        neighborhoodId = try c.decodeIfPresent(Int.self, forKey: .neighborhoodId) ?? 0
+        horizonHours = try c.decodeIfPresent(Int.self, forKey: .horizonHours) ?? 0
+        source = try c.decodeIfPresent(String.self, forKey: .source) ?? ""
+
+        let candidates: [[AirQualityForecastPoint]?] = [
+            try? c.decode([AirQualityForecastPoint].self, forKey: .forecast),
+            try? c.decode([AirQualityForecastPoint].self, forKey: .predictions),
+            try? c.decode([AirQualityForecastPoint].self, forKey: .series),
+            try? c.decode([AirQualityForecastPoint].self, forKey: .data),
+        ]
+        forecast = candidates.compactMap { $0 }.first { !$0.isEmpty } ?? []
     }
 }
 

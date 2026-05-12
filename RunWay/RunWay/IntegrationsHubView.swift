@@ -17,6 +17,15 @@ struct IntegrationsHubView: View {
         appSession.currentAnalysisNeighborhoodId
     }
 
+    /// Anasayfa dashboard’u aynı mahalle için yüklendiyse AQI/yeşil özeti (analiz kartlarıyla karşılaştırma).
+    private var homeHintForSameNeighborhood: DashboardQuickMetricsHint? {
+        guard let nid = neighborhoodId,
+              let hint = appSession.dashboardQuickMetricsHint,
+              hint.neighborhoodId == nid
+        else { return nil }
+        return hint
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -44,18 +53,39 @@ struct IntegrationsHubView: View {
 
                     integrationCard(title: "Hava kalitesi tahmini", systemImage: "chart.line.uptrend.xyaxis") {
                         if let air {
-                            Text("Kaynak: \(air.source)")
+                            Text("Kaynak: \(air.source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "—" : air.source)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text("\(air.forecast.count) zaman noktası (her ~6 saat)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            if let first = air.forecast.first, let last = air.forecast.last {
-                                Text("AQI: \(first.predictedAqi.formattedMetricValue) → \(last.predictedAqi.formattedMetricValue)")
-                                    .font(.subheadline.weight(.semibold))
+
+                            if air.forecast.isEmpty {
+                                Text("Tahmin serisi boş. Anasayfadaki AQI `/dashboard/home` → `quick_metrics` özetidir; bu bölüm `/integrations/air-quality-prediction` zaman serisidir.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("\(air.forecast.count) zaman noktası (her ~6 saat)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if let first = air.forecast.first, let last = air.forecast.last {
+                                    Text("AQI: \(first.predictedAqi.formattedMetricValue) → \(last.predictedAqi.formattedMetricValue)")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                            }
+
+                            if let hint = homeHintForSameNeighborhood {
+                                Text("Ana sayfa özeti (aynı mahalle): \(Int(hint.airQualityAqi.rounded())) AQI")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.top, 2)
                             }
                         } else {
                             placeholderLine
+                            Text("")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            if let hint = homeHintForSameNeighborhood {
+                                Text("Ana sayfa özeti: \(Int(hint.airQualityAqi.rounded())) AQI")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.top, 2)
+                            }
                         }
                     }
 
@@ -75,6 +105,14 @@ struct IntegrationsHubView: View {
                                     Text(detail.detectedAreas.joined(separator: " · "))
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
+                                }
+                                if let hint = homeHintForSameNeighborhood {
+                                    Text(
+                                        "Ana sayfa yeşil özeti: %\(hint.greenAreaPercent.formattedMetricValue) (yeşil alan analizi ile aynı kaynak; yanıt yoksa `quick_metrics` kullanılır)."
+                                    )
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.top, 4)
                                 }
                             } else if let msg = greenArea.message, !msg.isEmpty {
                                 Text(msg)

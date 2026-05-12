@@ -161,6 +161,17 @@ struct QuickMetrics: Decodable {
     }
 }
 
+extension QuickMetrics {
+    /// Dashboard henüz yokken mini metriklerde etiketleri göstermek için; değerler `HomeView` içinde `—` olarak gösterilir.
+    static var waitingForDashboard: QuickMetrics {
+        QuickMetrics(
+            airQuality: MetricItem(label: "Hava", value: 0, unit: "AQI"),
+            noise: MetricItem(label: "Gürültü", value: 0, unit: "dB"),
+            greenArea: MetricItem(label: "Yeşil", value: 0, unit: "%")
+        )
+    }
+}
+
 struct MetricItem: Decodable {
     let label: String
     let value: Double

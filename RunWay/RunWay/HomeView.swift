@@ -25,7 +25,6 @@ struct HomeView: View {
     @State private var selectedTarget: TargetSelection? = nil
 
     @State private var showWeatherDetail = false
-    @State private var showSuggestedRouteMap = false
     @State private var selectedSection: HomeSection = .neighborhood
     @State private var hasLoadedInitialData = false
     /// Son dashboard isteğinde kullanılan GPS (otomatik yenileme için).
@@ -38,56 +37,19 @@ struct HomeView: View {
         var id: String { rawValue }
     }
 
-    // MARK: - Fallback Mock Data
+    /// `navigation.active_route` ile harita hedefi (mock koordinat yok).
+    private struct ActiveRouteMapTarget: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let latitude: Double
+        let longitude: Double
 
-    private let fallbackNeighborhoodName = "Konum alınıyor..."
-    private let fallbackCityName = ""
-
-    private let fallbackOverallScore = 82
-    private let fallbackOverallStatus = "İyi"
-    private let fallbackLastUpdateText = "Son güncelleme: 2 dk önce"
-
-    private let airAQI = 42
-    private let noiseDb = 63
-    private let greenPct = 18
-
-    private let airDetailValue = 78
-    private let airDetailStatus = "İyi"
-    private let noiseDetailValue = 63
-    private let noiseDetailStatus = "Orta"
-    private let fallbackWeatherTempText = "18°C"
-    private let fallbackWeatherDescription = "Parçalı Bulutlu"
-
-    private let hourly: [HourlyForecast] = [
-        .init(hour: "Şimdi", temp: 9, icon: "cloud.sun.fill"),
-        .init(hour: "18:00", temp: 8, icon: "cloud.fill"),
-        .init(hour: "19:00", temp: 7, icon: "cloud.drizzle.fill"),
-        .init(hour: "20:00", temp: 6, icon: "cloud.moon.fill"),
-        .init(hour: "21:00", temp: 6, icon: "moon.stars.fill")
-    ]
-
-    private var dailyMock: [DailyForecast] {
-        [
-            .init(day: "Bugün", icon: "cloud.sun.fill", minTemp: 6, maxTemp: 18),
-            .init(day: "Sal", icon: "cloud.rain.fill", minTemp: 5, maxTemp: 15),
-            .init(day: "Çar", icon: "cloud.fill", minTemp: 4, maxTemp: 13),
-            .init(day: "Per", icon: "sun.max.fill", minTemp: 6, maxTemp: 19),
-            .init(day: "Cum", icon: "cloud.bolt.rain.fill", minTemp: 7, maxTemp: 16),
-            .init(day: "Cmt", icon: "cloud.sun.fill", minTemp: 6, maxTemp: 18),
-            .init(day: "Paz", icon: "cloud.snow.fill", minTemp: 0, maxTemp: 8),
-            .init(day: "Pzt", icon: "cloud.fill", minTemp: 3, maxTemp: 12),
-            .init(day: "Sal", icon: "cloud.rain.fill", minTemp: 4, maxTemp: 14),
-            .init(day: "Çar", icon: "sun.max.fill", minTemp: 7, maxTemp: 20)
-        ]
+        var coordinate: CLLocationCoordinate2D {
+            CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        }
     }
 
-    private let suggestedDistanceKm: Double = 1.2
-    private let suggestedEtaMin: Int = 12
-    private let suggestedScore: Int = 78
-    private let suggestedWarning = "Uyarı: Gürültülü alan olabilir"
-
-    private let suggestedDestinationName = "Merkez"
-    private let suggestedDestinationCoord = CLLocationCoordinate2D(latitude: 37.7648, longitude: 30.5566)
+    @State private var activeRouteMapTarget: ActiveRouteMapTarget?
 
     var body: some View {
         NavigationStack {
@@ -101,7 +63,7 @@ struct HomeView: View {
                            let manualName = appSession.manualNeighborhoodName {
                             manualSelectionBanner(name: manualName)
                         }
-                        if let errorMessage = activeErrorMessage {
+                        if let errorMessage = primaryHomeErrorMessage {
                             errorBanner(message: errorMessage)
                         }
                         heroScoreCard
@@ -140,13 +102,13 @@ struct HomeView: View {
                     currentTempText: weatherTempText,
                     currentDesc: weatherDesc,
                     hourly: hourlyForecast,
-                    daily: dailyMock
+                    daily: []
                 )
             }
-            .navigationDestination(isPresented: $showSuggestedRouteMap) {
+            .navigationDestination(item: $activeRouteMapTarget) { target in
                 SuggestedRouteMapView(
-                    destinationName: suggestedDestinationName,
-                    destinationCoordinate: suggestedDestinationCoord
+                    destinationName: target.name,
+                    destinationCoordinate: target.coordinate
                 )
             }
             .onAppear {
@@ -230,6 +192,18 @@ struct HomeView: View {
                 longitude: coord?.longitude
             )
         }
+
+        if let d = viewModel.dashboard, d.location.neighborhoodId > 0 {
+            let greenPercent = viewModel.integrationGreenAreaPercent ?? d.quickMetrics.greenArea.value
+            appSession.setDashboardQuickMetricsHint(
+                neighborhoodId: d.location.neighborhoodId,
+                airQualityAqi: d.quickMetrics.airQuality.value,
+                greenAreaPercent: greenPercent
+            )
+        } else {
+            appSession.clearDashboardQuickMetricsHint()
+        }
+
         if let nid = viewModel.dashboard?.location.neighborhoodId, nid > 0 {
             RunWayDebugLog.home("scheduling neighborhood detail fetch for neighborhoodId=\(nid)")
             appSession.updateAnalysisNeighborhood(id: nid)
@@ -322,16 +296,16 @@ struct HomeView: View {
                         .foregroundStyle(.secondary)
 
                     HStack(alignment: .lastTextBaseline, spacing: 10) {
-                        Text("\(overallScore)")
+                        Text(heroScoreText)
                             .font(.system(size: 42, weight: .heavy, design: .rounded))
                             .foregroundStyle(.primary)
 
-                        Text(overallStatus)
+                        Text(heroCategoryText)
                             .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .foregroundStyle(statusColor(for: overallStatus))
+                            .foregroundStyle(statusColor(for: heroCategoryText))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(statusColor(for: overallStatus).opacity(0.12))
+                            .background(statusColor(for: heroCategoryText).opacity(0.12))
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                 }
@@ -346,14 +320,16 @@ struct HomeView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
 
-            Text(lastUpdateText)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
+            if !lastUpdateText.isEmpty {
+                Text(lastUpdateText)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
 
             HStack(spacing: 10) {
-                miniMetric(icon: "wind", title: quickMetrics.airQuality.label, value: quickMetrics.airQuality.valueText, unit: quickMetrics.airQuality.unit)
-                miniMetric(icon: "speaker.wave.2", title: quickMetrics.noise.label, value: quickMetrics.noise.valueText, unit: quickMetrics.noise.unit)
-                miniMetric(icon: "leaf", title: quickMetrics.greenArea.label, value: quickMetrics.greenArea.valueText, unit: quickMetrics.greenArea.unit)
+                miniMetric(icon: "wind", title: quickMetrics.airQuality.label, value: metricValueDisplay(quickMetrics.airQuality), unit: quickMetrics.airQuality.unit)
+                miniMetric(icon: "speaker.wave.2", title: quickMetrics.noise.label, value: metricValueDisplay(quickMetrics.noise), unit: quickMetrics.noise.unit)
+                miniMetric(icon: "leaf", title: quickMetrics.greenArea.label, value: greenAreaHeroValueText, unit: quickMetrics.greenArea.unit)
             }
         }
         .padding(16)
@@ -399,10 +375,20 @@ struct HomeView: View {
     }
 
     private func statusColor(for status: String) -> Color {
-        switch status.lowercased() {
-        case "iyi": return .green
-        case "orta": return .orange
-        default: return .red
+        let trimmed = status.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == "—" {
+            return .secondary
+        }
+        let k = trimmed.lowercased(with: Locale(identifier: "tr_TR"))
+        switch k {
+        case "iyi", "çok iyi", "mükemmel":
+            return .green
+        case "orta":
+            return .orange
+        case "düşük", "çok düşük", "sağlıksız", "tehlikeli":
+            return .red
+        default:
+            return .red
         }
     }
 
@@ -453,17 +439,29 @@ struct HomeView: View {
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .padding(.top, 4)
 
+            if let detailErr = neighborhoodDetailLoadError {
+                neighborhoodDetailWarningBanner(message: detailErr)
+            }
+
             neighborhoodSummaryCard
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                ForEach(currentEnvironmentItems) { item in
-                    modernStatCard(
-                        title: item.title,
-                        value: item.displayValue,
-                        subtitle: item.statusText,
-                        icon: iconName(for: item),
-                        accent: accentColor(for: item)
-                    )
+            if currentEnvironmentItems.isEmpty {
+                Text("Anlık çevre verisi için dashboard veya mahalle detayı bekleniyor.")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    ForEach(currentEnvironmentItems) { item in
+                        modernStatCard(
+                            title: item.title,
+                            value: item.displayValue,
+                            subtitle: item.statusText,
+                            icon: iconName(for: item),
+                            accent: accentColor(for: item)
+                        )
+                    }
                 }
             }
 
@@ -586,13 +584,21 @@ struct HomeView: View {
                 .buttonStyle(.plain)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(hourlyForecast) { item in
-                        HourlyCard(item: item)
+            if hourlyForecast.isEmpty {
+                Text("Saatlik hava verisi API’de yok veya henüz yüklenmedi.")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(hourlyForecast) { item in
+                            HourlyCard(item: item)
+                        }
                     }
+                    .padding(.vertical, 2)
                 }
-                .padding(.vertical, 2)
             }
         }
         .padding(16)
@@ -696,36 +702,91 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
 
-            Button {
-                showSuggestedRouteMap = true
-            } label: {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Bugün önerilen rota")
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                        Spacer()
-                        Text(activeRouteStatusText)
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundStyle(activeRouteStatusColor)
-                    }
-
-                    HStack(spacing: 14) {
-                        Label("\(suggestedEtaMin) dk", systemImage: "clock")
-                        Label(String(format: "%.1f km", suggestedDistanceKm), systemImage: "location")
-                    }
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
-
-                    Text(routeWarningText)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(routeWarningColor)
-                }
-                .padding(16)
-                .background(Color(.secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            }
-            .buttonStyle(.plain)
+            activeRouteCard
         }
+    }
+
+    private var activeRouteCard: some View {
+        Group {
+            if let target = activeRouteMapTargetFromDashboard() {
+                Button {
+                    activeRouteMapTarget = target
+                } label: {
+                    activeRouteCardContent(
+                        title: "Aktif rota",
+                        subtitle: dashboard?.navigation.activeRoute?.routeName ?? "Rota devam ediyor",
+                        detail: "Haritada rotayı göster",
+                        status: "Aktif",
+                        statusColor: .blue,
+                        footnote: routeWarningText
+                    )
+                }
+                .buttonStyle(.plain)
+            } else if hasActiveRoute {
+                activeRouteCardContent(
+                    title: "Aktif rota",
+                    subtitle: dashboard?.navigation.activeRoute?.routeName ?? "Rota",
+                    detail: "Hedef koordinatları API yanıtında yok; harita açılamıyor.",
+                    status: "Aktif",
+                    statusColor: .blue,
+                    footnote: routeWarningText
+                )
+            } else {
+                activeRouteCardContent(
+                    title: "Aktif rota",
+                    subtitle: "Şu an devam eden bir rota yok.",
+                    detail: "Hedef seçerek yeni rota oluşturabilirsiniz.",
+                    status: "Yok",
+                    statusColor: .secondary,
+                    footnote: routeWarningText
+                )
+            }
+        }
+    }
+
+    private func activeRouteMapTargetFromDashboard() -> ActiveRouteMapTarget? {
+        guard let route = dashboard?.navigation.activeRoute,
+              let lat = route.destinationLatitude,
+              let lon = route.destinationLongitude
+        else { return nil }
+        let id = String(route.navigationSessionId ?? 0)
+        let name = route.routeName ?? "Hedef"
+        return ActiveRouteMapTarget(id: id, name: name, latitude: lat, longitude: lon)
+    }
+
+    private func activeRouteCardContent(
+        title: String,
+        subtitle: String,
+        detail: String,
+        status: String,
+        statusColor: Color,
+        footnote: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                Spacer()
+                Text(status)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(statusColor)
+            }
+
+            Text(subtitle)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+
+            Text(detail)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+
+            Text(footnote)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(routeWarningColor)
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
     private func errorBanner(message: String) -> some View {
@@ -739,6 +800,41 @@ struct HomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
+    /// Mahalle detayı (`/neighborhood/...`) hatası: dashboard çalışsa bile üstte kırmızı banner göstermeyiz; kullanıcıyı yanıltıyor.
+    private func neighborhoodDetailWarningBanner(message: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text(message)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+            }
+            Button {
+                Task {
+                    let id = currentNeighborhoodId
+                    guard id > 0 else { return }
+                    await neighborhoodDetailViewModel.loadDetails(neighborhoodId: id)
+                }
+            } label: {
+                Text("Tekrar dene")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.orange.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            Text("Özet ve anlık kartlar `/dashboard/home` verisinden gelmeye devam eder.")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(Color.orange.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
     private var dashboard: DashboardHomeResponse? {
         viewModel.dashboard
     }
@@ -747,29 +843,38 @@ struct HomeView: View {
         neighborhoodDetailViewModel.detail
     }
 
-    /// Dashboard decode/load errors surface first so a failing `/dashboard/home` is not hidden behind `/notifications` or `/favorites`.
-    private var activeErrorMessage: String? {
+    /// Dashboard, favoriler ve bildirim hataları. Mahalle detayı 500 olsa bile burada gösterilmez (aşağıda ayrı uyarı).
+    private var primaryHomeErrorMessage: String? {
         viewModel.errorMessage
             ?? favoritesViewModel.errorMessage
             ?? notificationsViewModel.errorMessage
-            ?? neighborhoodDetailViewModel.errorMessage
+    }
+
+    private var neighborhoodDetailLoadError: String? {
+        neighborhoodDetailViewModel.errorMessage
     }
 
     private var neighborhoodName: String {
-        neighborhoodDetail?.neighborhood.name ?? dashboard?.location.neighborhoodName ?? fallbackNeighborhoodName
+        if let name = neighborhoodDetail?.neighborhood.name, !name.isEmpty { return name }
+        if let name = dashboard?.location.neighborhoodName, !name.isEmpty { return name }
+        return viewModel.isLoading ? "Yükleniyor…" : "—"
     }
 
     private var cityName: String {
-        neighborhoodDetail?.neighborhood.city ?? dashboard?.location.city ?? fallbackCityName
+        if let c = neighborhoodDetail?.neighborhood.city, !c.isEmpty { return c }
+        if let c = dashboard?.location.city, !c.isEmpty { return c }
+        return "—"
     }
 
     private var districtName: String {
-        neighborhoodDetail?.neighborhood.district ?? ""
+        if let d = neighborhoodDetail?.neighborhood.district, !d.isEmpty { return d }
+        if let d = dashboard?.location.district, !d.isEmpty { return d }
+        return ""
     }
 
     private var cityDistrictText: String {
         if dashboard == nil && neighborhoodDetail == nil {
-            return "GPS doğruluğu bekleniyor"
+            return viewModel.isLoading ? "Dashboard yükleniyor…" : "Konum veya mahalle bilgisi yok"
         }
         if districtName.isEmpty {
             return cityName
@@ -787,24 +892,70 @@ struct HomeView: View {
         return "Konum: \(lat), \(lon)"
     }
 
-    private var overallScore: Int {
-        Int((dashboard?.environmentScore.score ?? Double(fallbackOverallScore)).rounded())
+    private var heroScoreText: String {
+        // Alt karttaki MYKİ ile birebir aynı değeri göster: önce mahalle detayı `myki.score`,
+        // yoksa dashboard `environment_score.score`. Yuvarlama yok; ondalık korunur (73.8 → "73.8").
+        if let score = neighborhoodDetail?.myki?.score {
+            return score.formattedMetricValue
+        }
+        if let dashboard {
+            return dashboard.environmentScore.score.formattedMetricValue
+        }
+        return viewModel.isLoading ? "…" : "—"
     }
 
-    private var overallStatus: String {
-        dashboard?.environmentScore.category ?? fallbackOverallStatus
+    private var heroCategoryText: String {
+        guard let dashboard else {
+            return viewModel.isLoading ? "" : "—"
+        }
+        // Dashboard `environment_score.category` ile mahalle `myki.category` bazen aynı skorda çelişiyor;
+        // skorlar hizalıysa tek kaynak olarak detay MYKİ etiketini kullan (alt kartla aynı).
+        if let myki = neighborhoodDetail?.myki {
+            let mykiCat = myki.category.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !mykiCat.isEmpty, heroAndMykiScoresAligned(dashboard: dashboard, myki: myki) {
+                return localizedMykiCategory(myki.category)
+            }
+        }
+        let rawCat = dashboard.environmentScore.category.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawKey = dashboard.environmentScore.categoryKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = rawCat.isEmpty ? rawKey : rawCat
+        return raw.isEmpty ? "—" : localizedMykiCategory(raw)
+    }
+
+    private func heroAndMykiScoresAligned(dashboard: DashboardHomeResponse, myki: MykiInfo) -> Bool {
+        abs(myki.score - dashboard.environmentScore.score) <= 1.0
     }
 
     private var lastUpdateText: String {
-        dashboard?.environmentScore.lastUpdatedText ?? fallbackLastUpdateText
+        guard let text = dashboard?.environmentScore.lastUpdatedText,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return dashboard == nil ? (viewModel.isLoading ? "…" : "") : "—"
+        }
+        return text
     }
 
     private var quickMetrics: QuickMetrics {
-        dashboard?.quickMetrics ?? QuickMetrics(
-            airQuality: MetricItem(label: "Hava", value: Double(airAQI), unit: "AQI"),
-            noise: MetricItem(label: "Gürültü", value: Double(noiseDb), unit: "dB"),
-            greenArea: MetricItem(label: "Yeşil", value: Double(greenPct), unit: "%")
-        )
+        dashboard?.quickMetrics ?? .waitingForDashboard
+    }
+
+    /// Anasayfa yeşil mini metriği: önce `/integrations/green-area-analysis` → `analysis.green_percentage`, yoksa `quick_metrics.green_area`.
+    private var displayGreenAreaPercent: Double {
+        viewModel.integrationGreenAreaPercent ?? quickMetrics.greenArea.value
+    }
+
+    private var greenAreaHeroValueText: String {
+        guard dashboard != nil else {
+            return viewModel.isLoading ? "…" : "—"
+        }
+        return displayGreenAreaPercent.formattedMetricValue
+    }
+
+    private func metricValueDisplay(_ item: MetricItem) -> String {
+        guard dashboard != nil else {
+            return viewModel.isLoading ? "…" : "—"
+        }
+        return item.valueText
     }
 
     private var currentEnvironmentItems: [CurrentEnvironmentItem] {
@@ -858,40 +1009,7 @@ struct HomeView: View {
             return items
         }
 
-        return [
-            CurrentEnvironmentItem(
-                key: "air_quality",
-                title: "Hava Kalitesi",
-                value: Double(airDetailValue),
-                unit: "AQI",
-                status: airDetailStatus,
-                statusKey: "good"
-            ),
-            CurrentEnvironmentItem(
-                key: "noise",
-                title: "Gürültü",
-                value: Double(noiseDetailValue),
-                unit: "dB",
-                status: noiseDetailStatus,
-                statusKey: "moderate"
-            ),
-            CurrentEnvironmentItem(
-                key: "green_area",
-                title: "Yeşil Alan",
-                value: Double(greenPct),
-                unit: "%",
-                status: "İyi",
-                statusKey: "good"
-            ),
-            CurrentEnvironmentItem(
-                key: "weather",
-                title: "Hava Durumu",
-                value: 18,
-                unit: "°C",
-                status: fallbackWeatherDescription,
-                statusKey: "cloudy"
-            )
-        ]
+        return []
     }
 
     private var hourlyForecast: [HourlyForecast] {
@@ -905,7 +1023,7 @@ struct HomeView: View {
             }
         }
 
-        return hourly
+        return []
     }
 
     private func weatherEnvironmentItem() -> CurrentEnvironmentItem {
@@ -922,10 +1040,10 @@ struct HomeView: View {
         return CurrentEnvironmentItem(
             key: "weather",
             title: "Hava Durumu",
-            value: 18,
+            value: 0,
             unit: "°C",
-            status: fallbackWeatherDescription,
-            statusKey: "cloudy"
+            status: nil,
+            statusKey: nil
         )
     }
 
@@ -936,6 +1054,10 @@ struct HomeView: View {
             return "sun.max.fill"
         case "mostly_clear":
             return "sun.haze.fill"
+        case "sunny":
+            return "sun.max.fill"
+        case "partly_cloudy":
+            return "cloud.sun.fill"
         case "cloudy":
             return "cloud.sun.fill"
         case "fog":
@@ -960,16 +1082,26 @@ struct HomeView: View {
     }
 
     private var mykiScoreText: String {
-        let score = neighborhoodDetail?.myki?.score ?? dashboard?.environmentScore.score ?? Double(fallbackOverallScore)
-        return score.formattedMetricValue
+        if let score = neighborhoodDetail?.myki?.score {
+            return score.formattedMetricValue
+        }
+        if let dashboard {
+            return dashboard.environmentScore.score.formattedMetricValue
+        }
+        return viewModel.isLoading ? "…" : "—"
     }
 
     private var mykiCategoryText: String {
         if let category = neighborhoodDetail?.myki?.category, !category.isEmpty {
             return localizedMykiCategory(category)
         }
-
-        return overallStatus
+        let cat = dashboard?.environmentScore.category.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let key = dashboard?.environmentScore.categoryKey.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let fromDashboard = cat.isEmpty ? key : cat
+        if !fromDashboard.isEmpty {
+            return localizedMykiCategory(fromDashboard)
+        }
+        return heroCategoryText
     }
 
     private var mykiCategoryColor: Color {
@@ -978,7 +1110,8 @@ struct HomeView: View {
 
     private var detailUpdatedAtText: String {
         if let createdAt = neighborhoodDetail?.latestEnvironmentalData?.createdAt, !createdAt.isEmpty {
-            return "Son veri: \(createdAt)"
+            let formatted = RunWayAPIInstantFormatting.turkishDisplayString(from: createdAt) ?? createdAt
+            return "Son veri: \(formatted)"
         }
 
         return ""
@@ -1017,23 +1150,18 @@ struct HomeView: View {
             return dashboardWeatherItem.displayValue
         }
 
-        return fallbackWeatherTempText
+        return viewModel.isLoading ? "…" : "—"
     }
 
     private var currentWeatherDescription: String {
-        dashboardWeatherItem?.status ?? fallbackWeatherDescription
+        if let s = dashboardWeatherItem?.status, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return s
+        }
+        return dashboard == nil && viewModel.isLoading ? "…" : "—"
     }
 
     private var weatherDesc: String {
         currentWeatherDescription
-    }
-
-    private var activeRouteStatusText: String {
-        hasActiveRoute ? "Aktif" : "%\(suggestedScore)"
-    }
-
-    private var activeRouteStatusColor: Color {
-        hasActiveRoute ? .blue : .green
     }
 
     private var routeWarningText: String {
@@ -1041,7 +1169,7 @@ struct HomeView: View {
             return dashboard?.navigation.activeRoute?.routeName ?? "Aktif rota devam ediyor"
         }
 
-        return suggestedWarning
+        return "Aktif rota yok. Hedef seçerek yeni rota oluşturabilirsiniz."
     }
 
     private var routeWarningColor: Color {
@@ -1070,7 +1198,11 @@ struct HomeView: View {
         case "weather":
             return .blue
         default:
-            return statusColor(for: item.status ?? "")
+            let s = (item.status ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if s.isEmpty {
+                return .secondary
+            }
+            return statusColor(for: s)
         }
     }
 
@@ -1105,15 +1237,29 @@ struct HomeView: View {
     }
 
     private func localizedMykiCategory(_ category: String) -> String {
-        switch category.lowercased() {
+        let key = category
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: " ")
+            .lowercased(with: Locale(identifier: "tr_TR"))
+
+        switch key {
+        case "very high", "veryhigh", "excellent", "mükemmel", "mukemmel":
+            return "Çok iyi"
         case "high", "good", "iyi":
             return "İyi"
-        case "medium", "orta":
+        case "medium", "orta", "moderate", "fair":
             return "Orta"
-        case "low", "poor", "dusuk", "kotu":
+        case "low", "poor", "bad", "dusuk", "düşük", "kotu", "kötü":
             return "Düşük"
+        case "very low", "verylow":
+            return "Çok düşük"
+        case "unhealthy", "sağlıksız":
+            return "Sağlıksız"
+        case "hazardous", "tehlikeli":
+            return "Tehlikeli"
         default:
-            return category.capitalized
+            let spaced = category.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "_", with: " ")
+            return spaced.capitalized(with: Locale(identifier: "tr_TR"))
         }
     }
 
@@ -1277,7 +1423,8 @@ private extension DataSourceSummary {
 
 private extension CurrentEnvironmentItem {
     var statusText: String {
-        status ?? ""
+        let t = (status ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? "—" : t
     }
 
     var displayValue: String {
