@@ -42,6 +42,41 @@ extension KeyedDecodingContainer {
         return nil
     }
 
+    /// Accepts `true`/`false`, `0`/`1`, or common string forms — avoids throws from `decodeIfPresent(Bool.self, …)` when API sends integers.
+    func decodeFlexibleBoolIfPresent(forKey key: Key) throws -> Bool? {
+        if let boolValue = try decodeIfPresent(Bool.self, forKey: key) {
+            return boolValue
+        }
+        if let intValue = try decodeIfPresent(Int.self, forKey: key) {
+            return intValue != 0
+        }
+        if let stringValue = try decodeIfPresent(String.self, forKey: key) {
+            switch stringValue.lowercased() {
+            case "1", "true", "yes", "y":
+                return true
+            case "0", "false", "no", "n":
+                return false
+            default:
+                return nil
+            }
+        }
+        return nil
+    }
+
+    func decodeFlexibleBool(forKey key: Key, default defaultValue: Bool = false) throws -> Bool {
+        try decodeFlexibleBoolIfPresent(forKey: key) ?? defaultValue
+    }
+
+    func decodeFlexibleIntIfPresent(forKey key: Key) throws -> Int? {
+        if let intValue = try decodeIfPresent(Int.self, forKey: key) {
+            return intValue
+        }
+        if let stringValue = try decodeIfPresent(String.self, forKey: key) {
+            return Int(stringValue)
+        }
+        return nil
+    }
+
     func decodeFlexibleDoubleArrayIfPresent(forKey key: Key) throws -> [Double]? {
         if let values = try decodeIfPresent([Double].self, forKey: key) {
             return values

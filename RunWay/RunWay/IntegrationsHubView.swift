@@ -61,11 +61,32 @@ struct IntegrationsHubView: View {
 
                     integrationCard(title: "Yeşil alan analizi", systemImage: "leaf.circle") {
                         if let greenArea {
-                            Text(greenArea.message)
-                                .font(.subheadline)
-                            if let providers = greenArea.supportedFutureProviders, !providers.isEmpty {
-                                Text(providers.joined(separator: " · "))
-                                    .font(.caption2)
+                            Text("Durum: \(greenArea.status)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            if let detail = greenArea.analysis {
+                                Text("Yeşil alan: %\(detail.greenPercentage.formattedMetricValue)")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Güven: \(detail.confidence.formattedMetricValue)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if !detail.detectedAreas.isEmpty {
+                                    Text(detail.detectedAreas.joined(separator: " · "))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } else if let msg = greenArea.message, !msg.isEmpty {
+                                Text(msg)
+                                    .font(.subheadline)
+                                if let providers = greenArea.supportedFutureProviders, !providers.isEmpty {
+                                    Text(providers.joined(separator: " · "))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } else {
+                                Text("Sunucu yanıtı çözümlendi ancak gösterilecek metin yok.")
+                                    .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
                         } else {
@@ -75,11 +96,48 @@ struct IntegrationsHubView: View {
 
                     integrationCard(title: "TÜİK doğrulama", systemImage: "checkmark.shield") {
                         if let tuik {
-                            Text(tuik.source)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(tuik.message)
-                                .font(.subheadline)
+                            if tuik.usesStructuredTuikPayload {
+                                Text(tuik.headlineCaption)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if !tuik.locationCaption.isEmpty {
+                                    Text(tuik.locationCaption)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if let rows = tuik.validations, !rows.isEmpty {
+                                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                                Image(systemName: row.isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                                    .foregroundStyle(row.isValid ? Color.green : Color.orange)
+                                                    .font(.caption)
+                                                Text(row.indicator)
+                                                    .font(.subheadline.weight(.semibold))
+                                            }
+                                            Text(row.metricsCaption)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                            Text(row.statusMessage)
+                                                .font(.caption)
+                                        }
+                                        .padding(.vertical, 4)
+                                    }
+                                } else {
+                                    Text(tuik.displayBody)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } else {
+                                Text("Durum: \(tuik.status ?? "—")")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(tuik.displaySource)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(tuik.displayBody)
+                                    .font(.subheadline)
+                            }
                         } else {
                             placeholderLine
                         }

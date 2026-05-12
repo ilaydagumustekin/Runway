@@ -48,14 +48,14 @@ struct NotificationItem: Decodable, Identifiable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
-        id = (try? container.decode(Int.self, forKey: .id)) ?? 0
-        userId = try? container.decodeIfPresent(Int.self, forKey: .userId)
-        neighborhoodId = try? container.decodeIfPresent(Int.self, forKey: .neighborhoodId)
+        id = try container.decodeFlexibleIntIfPresent(forKey: .id) ?? 0
+        userId = try container.decodeFlexibleIntIfPresent(forKey: .userId)
+        neighborhoodId = try container.decodeFlexibleIntIfPresent(forKey: .neighborhoodId)
         title = (try? container.decode(String.self, forKey: .title)) ?? "Bildirim"
         message = (try? container.decode(String.self, forKey: .message)) ?? ""
         notificationType = (try? container.decode(String.self, forKey: .notificationType)) ?? "info"
         severity = (try? container.decode(String.self, forKey: .severity)) ?? "info"
-        isRead = (try? container.decode(Bool.self, forKey: .isRead)) ?? false
+        isRead = try container.decodeFlexibleBool(forKey: .isRead, default: false)
         createdAt = try? container.decodeIfPresent(String.self, forKey: .createdAt)
     }
 }

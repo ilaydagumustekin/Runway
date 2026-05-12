@@ -8,7 +8,7 @@ struct NotificationsService {
     }
 
     func getNotifications(token: String) async throws -> [NotificationItem] {
-        try await apiClient.get(path: "/notifications", token: token)
+        try await apiClient.getArray(path: "/notifications", token: token)
     }
 
     func markAsRead(notificationId: Int, token: String) async throws -> NotificationItem {

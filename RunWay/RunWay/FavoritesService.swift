@@ -8,7 +8,7 @@ struct FavoritesService {
     }
 
     func getFavorites(token: String) async throws -> [FavoriteNeighborhoodResponse] {
-        try await apiClient.get(path: "/favorites", queryItems: [], token: token)
+        try await apiClient.getArray(path: "/favorites", queryItems: [], token: token)
     }
 
     func addFavorite(neighborhoodId: Int, token: String) async throws -> FavoriteNeighborhoodResponse {

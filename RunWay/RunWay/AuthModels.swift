@@ -25,6 +25,12 @@ struct LoginResponse: Decodable {
         case accessToken = "access_token"
         case tokenType = "token_type"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accessToken = try container.decode(String.self, forKey: .accessToken)
+        tokenType = try container.decodeIfPresent(String.self, forKey: .tokenType) ?? "bearer"
+    }
 }
 
 struct UserProfileResponse: Decodable {
@@ -38,5 +44,19 @@ struct UserProfileResponse: Decodable {
         case fullName = "full_name"
         case email
         case role
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let intId = try? container.decode(Int.self, forKey: .id) {
+            id = intId
+        } else if let str = try? container.decode(String.self, forKey: .id), let intId = Int(str) {
+            id = intId
+        } else {
+            id = 0
+        }
+        fullName = try container.decodeIfPresent(String.self, forKey: .fullName) ?? ""
+        email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        role = try container.decodeIfPresent(String.self, forKey: .role) ?? "user"
     }
 }

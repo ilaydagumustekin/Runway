@@ -180,9 +180,9 @@ struct MetricItem: Decodable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        label = try container.decode(String.self, forKey: .label)
-        value = try container.decodeFlexibleDouble(forKey: .value)
-        unit = try container.decode(String.self, forKey: .unit)
+        label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
+        value = try container.decodeFlexibleDoubleIfPresent(forKey: .value) ?? 0
+        unit = try container.decodeIfPresent(String.self, forKey: .unit) ?? ""
     }
 }
 
@@ -272,7 +272,7 @@ struct DashboardNotifications: Decodable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        unreadCount = try container.decodeIfPresent(Int.self, forKey: .unreadCount) ?? 0
+        unreadCount = try container.decodeFlexibleIntIfPresent(forKey: .unreadCount) ?? 0
     }
 }
 
@@ -292,7 +292,7 @@ struct DashboardNavigation: Decodable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        hasActiveRoute = try container.decodeIfPresent(Bool.self, forKey: .hasActiveRoute) ?? false
+        hasActiveRoute = try container.decodeFlexibleBool(forKey: .hasActiveRoute, default: false)
         activeRoute = try container.decodeIfPresent(ActiveRoute.self, forKey: .activeRoute)
     }
 }

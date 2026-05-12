@@ -51,9 +51,9 @@ struct FavoriteNeighborhoodResponse: Decodable, Identifiable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeIfPresent(Int.self, forKey: .id) ?? 0
-        userId = try container.decodeIfPresent(Int.self, forKey: .userId)
-        neighborhoodId = try container.decodeIfPresent(Int.self, forKey: .neighborhoodId) ?? 0
+        id = try container.decodeFlexibleIntIfPresent(forKey: .id) ?? 0
+        userId = try container.decodeFlexibleIntIfPresent(forKey: .userId)
+        neighborhoodId = try container.decodeFlexibleIntIfPresent(forKey: .neighborhoodId) ?? 0
         createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
         neighborhood = try container.decodeIfPresent(FavoriteNeighborhood.self, forKey: .neighborhood)
         name = try container.decodeIfPresent(String.self, forKey: .name)
@@ -107,7 +107,7 @@ struct FavoriteNeighborhood: Decodable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeIfPresent(Int.self, forKey: .id) ?? 0
+        id = try container.decodeFlexibleIntIfPresent(forKey: .id) ?? 0
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         city = try container.decodeIfPresent(String.self, forKey: .city) ?? ""
         district = try container.decodeIfPresent(String.self, forKey: .district) ?? ""

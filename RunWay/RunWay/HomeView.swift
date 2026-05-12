@@ -747,8 +747,12 @@ struct HomeView: View {
         neighborhoodDetailViewModel.detail
     }
 
+    /// Dashboard decode/load errors surface first so a failing `/dashboard/home` is not hidden behind `/notifications` or `/favorites`.
     private var activeErrorMessage: String? {
-        notificationsViewModel.errorMessage ?? favoritesViewModel.errorMessage ?? neighborhoodDetailViewModel.errorMessage ?? viewModel.errorMessage
+        viewModel.errorMessage
+            ?? favoritesViewModel.errorMessage
+            ?? notificationsViewModel.errorMessage
+            ?? neighborhoodDetailViewModel.errorMessage
     }
 
     private var neighborhoodName: String {
